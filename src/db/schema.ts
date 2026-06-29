@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   boolean,
+  date,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -23,8 +24,9 @@ export const profiles = pgTable("profiles", {
     .references(() => users.id, { onDelete: "cascade" }),
 
   handle: varchar("handle", { length: 32 }).notNull().unique(),
-  displayName: varchar("display_name", { length: 64 }),
+  displayName: varchar("display_name", { length: 64 }).notNull(),
   bio: text("bio"),
+  birthDate: date(),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
