@@ -16,6 +16,7 @@
     "zod": "^4.4.3"
   },
   "scripts": {
-    "dev": "bun run --hot src/index.ts"
+    "dev": "bun run --hot src/index.ts",
+    "migrate": "bunx drizzle-kit generate && bun run src/db/migrate.ts"
   }
 }
