@@ -1,3 +1,27 @@
+# microblog
+
+A microblogging JSON API on Bun + Hono, with Postgres (Drizzle ORM, `drizzle-orm/bun-sql`) for storage and Redis for sessions and rate limiting. No frontend.
+
+## Structure & conventions
+
+```
+src/
+  index.ts            # app wiring + default export (Bun serves it — no Bun.serve() call needed)
+  config.ts           # env-derived constants, cookie options
+  db/                 # Drizzle connection (index.ts) + schema (schema.ts)
+  middleware/         # reusable Hono middleware (e.g. rate-limit.ts)
+  auth/
+    schema.ts         # Zod request schemas
+    service.ts        # auth business logic (registration, sessions, tokens)
+    route.ts          # thin Hono handlers
+```
+
+- **Keep routes thin:** a handler validates input, calls a service function, shapes the response. Business logic and DB/Redis access belong in `*/service.ts`, not in handlers.
+- **Services speak the domain, not HTTP** — return result objects (e.g. `{ ok: false, reason: "conflict" }`) and let the route map them to status codes.
+- **Shared constants live in `config.ts`** (TTLs, cookie options) — don't redefine them per file.
+- Run with `bun run dev`; apply migrations with `bun run migrate`.
+
+## General Bun rules
 
 Default to using Bun instead of Node.js.
 
@@ -11,10 +35,9 @@ Default to using Bun instead of Node.js.
 
 ## APIs
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
+- This project routes through **Hono**, not raw `Bun.serve()` routes. Don't use `express`.
+- `Bun.sql` for Postgres (used here via Drizzle's `bun-sql` adapter). Don't use `pg` or `postgres.js`.
+- `Bun.redis` for Redis (imported as `import { redis } from "bun"`). Don't use `ioredis`.
 - `WebSocket` is built-in. Don't use `ws`.
 - Prefer `Bun.file` over `node:fs`'s readFile/writeFile
 - Bun.$`ls` instead of execa.
@@ -29,78 +52,6 @@ import { test, expect } from "bun:test";
 test("hello world", () => {
   expect(1).toBe(1);
 });
-```
-
-## Frontend
-
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
-
-Server:
-
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
-
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
-
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
-
-With the following `frontend.tsx`:
-
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
