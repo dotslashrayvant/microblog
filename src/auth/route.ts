@@ -28,14 +28,12 @@ auth.post(
   async (c) => {
     const result = await registerUser(c.req.valid("json"));
 
-    if (!result.ok) {
+    if (!result.ok || !result.user) {
       return c.json({ error: "Incorrect email or password" }, 409);
     }
 
-    if (result.user) {
-      const token = await createSession(result.user.id);
-      setCookie(c, COOKIE_NAME, token, cookieOptions);
-    }
+    const token = await createSession(result.user.id);
+    setCookie(c, COOKIE_NAME, token, cookieOptions);
 
     return c.json(
       {
