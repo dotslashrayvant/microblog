@@ -1,57 +1,42 @@
-# microblog
+# CLAUDE.md
 
-A microblogging JSON API on Bun + Hono, with Postgres (Drizzle ORM, `drizzle-orm/bun-sql`) for storage and Redis for sessions and rate limiting. No frontend.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Structure & conventions
+A microblogging JSON API on **Bun + Hono**, with Postgres (Drizzle ORM via `drizzle-orm/bun-sql`) for storage and Redis for sessions and rate limiting. No frontend. Early stage — only auth (register/login) is implemented; `/auth/logout` and `/auth/me` are empty stubs.
 
-```
-src/
-  index.ts            # app wiring + default export (Bun serves it — no Bun.serve() call needed)
-  config.ts           # env-derived constants, cookie options
-  db/                 # Drizzle connection (index.ts) + schema (schema.ts)
-  middleware/         # reusable Hono middleware (e.g. rate-limit.ts)
-  auth/
-    schema.ts         # Zod request schemas
-    service.ts        # auth business logic (registration, sessions, tokens)
-    route.ts          # thin Hono handlers
+## Commands
+
+```bash
+bun install          # install dependencies
+bun run dev          # hot-reloading server (src/index.ts)
+bun run migrate      # push schema to DB (drizzle-kit push — no migration files generated)
+bun run database     # open Drizzle Studio
+bun test             # run tests (bun:test); single test: bun test path/to/file.test.ts -t "name"
 ```
 
-- **Keep routes thin:** a handler validates input, calls a service function, shapes the response. Business logic and DB/Redis access belong in `*/service.ts`, not in handlers.
-- **Services speak the domain, not HTTP** — return result objects (e.g. `{ ok: false, reason: "conflict" }`) and let the route map them to status codes.
-- **Shared constants live in `config.ts`** (TTLs, cookie options) — don't redefine them per file.
-- Run with `bun run dev`; apply migrations with `bun run migrate`.
+Required env vars (Bun auto-loads `.env`): `DATABASE_URL` (Postgres), `REDIS_URL` (Redis), `NODE_ENV` (`production` enables `secure` cookies).
 
-## General Bun rules
+## Architecture
 
-Default to using Bun instead of Node.js.
+Per feature (e.g. `src/auth/`), code splits three ways and the boundary is enforced:
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+- **`route.ts`** — thin Hono handlers. Validate input (`zValidator` against a schema), call a service function, map its result to a status code. No business logic, no DB/Redis access.
+- **`service.ts`** — domain logic and all DB/Redis access. Functions return plain **result objects** (e.g. `{ ok: false, code: 409 }`), never HTTP responses — the route decides the status.
+- **`schema.ts`** — Zod request schemas + inferred types (`z.infer`).
 
-## APIs
+Other structure: `src/index.ts` wires the app and `export default app` (Bun serves the default export — there is **no `Bun.serve()` call**); `src/config.ts` holds shared constants (session/rate-limit TTLs, `cookieOptions`) — don't redefine these per file; `src/db/` has the Drizzle connection and `schema.ts` (table definitions); `src/middleware/` holds reusable Hono middleware.
 
-- This project routes through **Hono**, not raw `Bun.serve()` routes. Don't use `express`.
-- `Bun.sql` for Postgres (used here via Drizzle's `bun-sql` adapter). Don't use `pg` or `postgres.js`.
-- `Bun.redis` for Redis (imported as `import { redis } from "bun"`). Don't use `ioredis`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+### Auth conventions (security-sensitive — preserve these)
 
-## Testing
+- **Registration** inserts `users` + `profiles` in one `db.transaction`. Failure responses use a generic `"Registration failed"` message regardless of cause.
+- **Login** always runs `Bun.password.verify` — against a dummy hash when no user matches — so response timing doesn't reveal whether an email is registered. The `401` message is deliberately generic (`"Incorrect email or password"`).
+- Sessions live in Redis as `session:<uuid>` (1h TTL), returned as an `httpOnly`, `SameSite=Lax` cookie named `session`. Rate limiting is per-IP via `ratelimit:<ip>` (25 ops / 30 min), applied as the `rateLimit` middleware on auth routes.
 
-Use `bun test` to run tests.
+## Bun-specific rules (this is a Bun project, not Node)
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+- Use `bun <file>`, `bun test`, `bun install`, `bun run <script>`, `bunx <pkg>` — never the node/npm/yarn/pnpm/jest/vitest/ts-node equivalents. Don't add `dotenv` (Bun loads `.env`).
+- Routing goes through **Hono** — don't introduce `express` or raw `Bun.serve()` routes.
+- Use Bun's built-in clients: `Bun.sql` for Postgres (here via Drizzle's `bun-sql` adapter — don't add `pg` or `postgres.js`) and `Bun.redis` (`import { redis } from "bun"` — don't add `ioredis`).
+- Prefer built-ins: `WebSocket` (not `ws`), `Bun.file` (not `node:fs`), `Bun.$` (not `execa`).
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+Bun API docs are vendored at `node_modules/bun-types/docs/**.mdx`.

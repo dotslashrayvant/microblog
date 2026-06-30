@@ -16,7 +16,7 @@ export async function createSession(userId: string) {
   return sessionId;
 }
 
-async function getSession(sessionId: string) {
+export async function getSession(sessionId: string) {
   const key = `session:${sessionId}`;
 
   const exists = await redis.exists(key);
@@ -25,6 +25,10 @@ async function getSession(sessionId: string) {
   const userId = await redis.get(key);
 
   return userId;
+}
+
+export async function destroySession(sessionId: string) {
+  await redis.del(`session:${sessionId}`);
 }
 
 // TODO: wire up kafka for email sending service
@@ -87,4 +91,24 @@ export async function loginUser(input: UserLoginData) {
 
   if (!user || !valid) return { ok: false, error: "Invalid credentials" };
   return { ok: true, userId: user.id, email: user.email };
+}
+
+export async function getUserProfile(userId: string) {
+  const [row] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      emailVerified: users.emailVerified,
+      createdAt: users.createdAt,
+      handle: profiles.handle,
+      displayName: profiles.displayName,
+      bio: profiles.bio,
+      birthDate: profiles.birthDate,
+    })
+    .from(users)
+    .innerJoin(profiles, eq(profiles.userId, users.id))
+    .where(eq(users.id, userId));
+
+  if (!row) return { ok: false as const, code: 404 as const };
+  return { ok: true as const, user: row };
 }

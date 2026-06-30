@@ -1,11 +1,19 @@
 import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
+import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import { zValidator } from "@hono/zod-validator";
 
 import { rateLimit } from "../middleware/rate-limit";
+import { verifySession } from "../middleware/verify-session";
 import { COOKIE_NAME, cookieOptions } from "../config";
 import { UserLoginSchema, UserRegisterSchema } from "./schema";
-import { createSession, loginUser, registerUser } from "./service";
+
+import {
+  createSession,
+  destroySession,
+  getUserProfile,
+  loginUser,
+  registerUser,
+} from "./service";
 
 export const auth = new Hono();
 
@@ -70,5 +78,17 @@ auth.post(
   },
 );
 
-auth.post("/logout", async (c) => {});
-auth.get("/me", async (c) => {});
+auth.post("/logout", async (c) => {
+  const sessionId = getCookie(c, COOKIE_NAME);
+  if (sessionId) await destroySession(sessionId);
+
+  deleteCookie(c, COOKIE_NAME, cookieOptions);
+  return c.json({ success: true });
+});
+
+auth.get("/me", verifySession, async (c) => {
+  const result = await getUserProfile(c.get("userId"));
+  if (!result.ok) return c.json({ error: "User not found" }, result.code);
+
+  return c.json({ user: result.user });
+});
