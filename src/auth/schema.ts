@@ -20,4 +20,10 @@ export const UserRegisterSchema = z.object({
   displayName: z.string().min(1).max(64),
 });
 
+export const UserLoginSchema = z.object({
+  email: z.email(),
+  password: z.string(),
+});
+
 export type UserRegisterData = z.infer<typeof UserRegisterSchema>;
+export type UserLoginData = z.infer<typeof UserLoginSchema>;

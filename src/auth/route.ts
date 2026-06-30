@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { zValidator } from "@hono/zod-validator";
-import { COOKIE_NAME, cookieOptions } from "../config";
-import { createSession, registerUser } from "./service";
-import { UserRegisterSchema } from "./schema";
+
 import { rateLimit } from "../middleware/rate-limit";
+import { COOKIE_NAME, cookieOptions } from "../config";
+import { UserLoginSchema, UserRegisterSchema } from "./schema";
+import { createSession, loginUser, registerUser } from "./service";
 
 export const auth = new Hono();
 
@@ -29,24 +30,45 @@ auth.post(
     const result = await registerUser(c.req.valid("json"));
 
     if (!result.ok || !result.user) {
-      return c.json({ error: "Incorrect email or password" }, 409);
+      return c.json({ error: "Registration failed" }, result.code);
     }
 
     const token = await createSession(result.user.id);
     setCookie(c, COOKIE_NAME, token, cookieOptions);
 
-    return c.json(
-      {
-        user: result.user,
-        message: "Account created",
-        action: "Check your email to verify your account",
-      },
-
-      201,
-    );
+    return c.json({ success: true }, 201);
   },
 );
 
-auth.post("/login", async (c) => {});
+auth.post(
+  "/login",
+  rateLimit,
+
+  zValidator("json", UserLoginSchema, (res, c) => {
+    if (!res.success)
+      return c.json(
+        {
+          error: res.error.issues.map((i) => ({
+            field: i.path.join("."),
+            message: i.message,
+          })),
+        },
+        400,
+      );
+  }),
+
+  async (c) => {
+    const result = await loginUser(c.req.valid("json"));
+    if (!result.ok || !result.userId) {
+      return c.json({ error: "Incorrect email or password" }, 401);
+    }
+
+    const token = await createSession(result.userId);
+    setCookie(c, COOKIE_NAME, token, cookieOptions);
+
+    return c.json({ success: true });
+  },
+);
+
 auth.post("/logout", async (c) => {});
 auth.get("/me", async (c) => {});

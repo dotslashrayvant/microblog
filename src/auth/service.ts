@@ -2,20 +2,29 @@ import { redis } from "bun";
 import { eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { profiles, sessions, users } from "../db/schema";
-import { SESSION_TTL_SECONDS, VERIFICATION_TTL_SECONDS } from "../config";
-import type { UserRegisterData } from "./schema";
+import { profiles, users } from "../db/schema";
+import { SESSION_TTL_SECONDS } from "../config";
+import type { UserLoginData, UserRegisterData } from "./schema";
 
 export async function createSession(userId: string) {
   const sessionId = crypto.randomUUID();
   const key = `session:${sessionId}`;
-  const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000);
 
-  await db.insert(sessions).values({ id: sessionId, userId, expiresAt });
   await redis.set(key, userId);
   await redis.expire(key, SESSION_TTL_SECONDS);
 
   return sessionId;
+}
+
+async function getSession(sessionId: string) {
+  const key = `session:${sessionId}`;
+
+  const exists = await redis.exists(key);
+  if (!exists) return null;
+
+  const userId = await redis.get(key);
+
+  return userId;
 }
 
 // TODO: wire up kafka for email sending service
@@ -30,7 +39,8 @@ export async function registerUser(input: UserRegisterData) {
     .from(users)
     .where(eq(users.email, input.email));
 
-  if (existing) return { ok: false, reason: "user already exists" };
+  // user already exists
+  if (existing) return { ok: false, code: 409 as const };
 
   // create a new user
   let user: { id: string; email: string };
@@ -56,10 +66,25 @@ export async function registerUser(input: UserRegisterData) {
       return created;
     });
   } catch {
-    return { ok: false, reason: "db error" };
+    // DB error
+    return { ok: false, code: 500 as const };
   }
 
   await sendVerificationEmail(user.email);
 
   return { ok: true, user };
+}
+
+export async function loginUser(input: UserLoginData) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, input.email));
+
+  const dummyHash = await Bun.password.hash("hPH2vm49hAvIK7vypi4ttveuY");
+  const hash = user?.passwordHash ?? dummyHash;
+  const valid = await Bun.password.verify(input.password, hash);
+
+  if (!user || !valid) return { ok: false, error: "Invalid credentials" };
+  return { ok: true, userId: user.id, email: user.email };
 }

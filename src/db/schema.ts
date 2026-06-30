@@ -31,15 +31,3 @@ export const profiles = pgTable("profiles", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-
-export const sessions = pgTable("sessions", {
-  id: text("id").primaryKey(),
-
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  revokedAt: timestamp("revoked_at"),
-});
