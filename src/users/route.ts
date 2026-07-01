@@ -36,7 +36,7 @@ users.patch(
     if (!res.success) return badRequest(c, res.error.issues);
   }),
   async (c) => {
-    const result = await updateProfile(c.get("userId"), c.req.valid("json"));
+    const result = await updateProfile(c.var.userId, c.req.valid("json"));
     if (!result.ok) return c.json({ error: "User not found" }, result.code);
 
     return c.json({ user: result.user });

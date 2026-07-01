@@ -29,7 +29,7 @@ export const profiles = pgTable("profiles", {
 
   // aka handle, prepend @ in frontend
   // must be unique
-  username: varchar("handle", { length: 32 }).notNull().unique(),
+  username: varchar("username", { length: 32 }).notNull().unique(),
 
   // the name that will be displayed on profile ui
   displayName: varchar("display_name", { length: 64 }).notNull(),
