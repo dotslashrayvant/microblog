@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 
 import { verifySession } from "../middleware/verify-session";
+
 import {
   UpdateProfileSchema,
   UserIdParamSchema,
@@ -14,8 +15,9 @@ import {
   getUserByUsername,
   updateProfile,
 } from "./service";
+
 import { PostListQuerySchema } from "../posts/schema";
-import { getPostsByAuthorId } from "../posts/service";
+import { getLikedPostsByUserId, getPostsByAuthorId } from "../posts/service";
 
 export const users = new Hono();
 
@@ -91,6 +93,27 @@ users.get(
   },
 );
 
+// Public: posts liked by a username, newest-like first.
+users.get(
+  "/by/username/:username/liked_posts",
+  zValidator("param", UsernameParamSchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  zValidator("query", PostListQuerySchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  async (c) => {
+    const user = await getUserByUsername(c.req.valid("param").username);
+    if (!user.ok) return c.json({ error: "User not found" }, user.code);
+
+    const result = await getLikedPostsByUserId(
+      user.user.id,
+      c.req.valid("query"),
+    );
+    return c.json({ posts: result.posts });
+  },
+);
+
 // Public lookup by id.
 users.get(
   "/:id",
@@ -120,6 +143,25 @@ users.get(
     if (!user.ok) return c.json({ error: "User not found" }, user.code);
 
     const result = await getPostsByAuthorId(id, c.req.valid("query"));
+    return c.json({ posts: result.posts });
+  },
+);
+
+// Public: posts liked by a user id, newest-like first.
+users.get(
+  "/:id/liked_posts",
+  zValidator("param", UserIdParamSchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  zValidator("query", PostListQuerySchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const user = await getUserById(id);
+    if (!user.ok) return c.json({ error: "User not found" }, user.code);
+
+    const result = await getLikedPostsByUserId(id, c.req.valid("query"));
     return c.json({ posts: result.posts });
   },
 );

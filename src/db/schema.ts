@@ -1,5 +1,6 @@
 import {
   pgTable,
+  primaryKey,
   uuid,
   varchar,
   text,
@@ -61,3 +62,34 @@ export const profiles = pgTable("profiles", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// One row per (user, post) - the composite PK makes likes idempotent.
+// Both FKs cascade, so deleting a post or user clears its likes.
+export const likes = pgTable(
+  "likes",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.postId] })],
+);
+
+// Same shape as likes - one repost per (user, post).
+export const reposts = pgTable(
+  "reposts",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.postId] })],
+);

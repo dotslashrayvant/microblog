@@ -3,13 +3,26 @@ import type { Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 
 import { verifySession } from "../middleware/verify-session";
+
 import {
   CreatePostSchema,
   PostIdParamSchema,
+  PostListQuerySchema,
   ReplyBodySchema,
   UpdatePostSchema,
 } from "./schema";
-import { createPost, deletePost, getPostById, updatePost } from "./service";
+
+import {
+  createPost,
+  deletePost,
+  getLikingUsers,
+  getPostById,
+  likePost,
+  repostPost,
+  unlikePost,
+  unrepostPost,
+  updatePost,
+} from "./service";
 
 export const posts = new Hono();
 
@@ -29,7 +42,7 @@ function badRequest(
   );
 }
 
-// Create a post — top-level, or a reply when parentId is provided.
+// Create a post - top-level, or a reply when parentId is provided.
 posts.post(
   "/",
   verifySession,
@@ -105,7 +118,7 @@ posts.delete(
   },
 );
 
-// Reply to a post — parentId comes from the path.
+// Reply to a post - parentId comes from the path.
 posts.post(
   "/:id/reply",
   verifySession,
@@ -127,5 +140,85 @@ posts.post(
     }
 
     return c.json({ post: result.post }, 201);
+  },
+);
+
+// Like a post (idempotent - repeating is a no-op).
+posts.post(
+  "/:id/like",
+  verifySession,
+  zValidator("param", PostIdParamSchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  async (c) => {
+    const result = await likePost(c.var.userId, c.req.valid("param").id);
+    if (!result.ok) return c.json({ error: "Post not found" }, result.code);
+
+    return c.json({ success: true });
+  },
+);
+
+// Remove a like (idempotent).
+posts.delete(
+  "/:id/like",
+  verifySession,
+  zValidator("param", PostIdParamSchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  async (c) => {
+    const result = await unlikePost(c.var.userId, c.req.valid("param").id);
+    if (!result.ok) return c.json({ error: "Post not found" }, result.code);
+
+    return c.json({ success: true });
+  },
+);
+
+// Repost a post (idempotent).
+posts.post(
+  "/:id/repost",
+  verifySession,
+  zValidator("param", PostIdParamSchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  async (c) => {
+    const result = await repostPost(c.var.userId, c.req.valid("param").id);
+    if (!result.ok) return c.json({ error: "Post not found" }, result.code);
+
+    return c.json({ success: true });
+  },
+);
+
+// Remove a repost (idempotent).
+posts.delete(
+  "/:id/repost",
+  verifySession,
+  zValidator("param", PostIdParamSchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  async (c) => {
+    const result = await unrepostPost(c.var.userId, c.req.valid("param").id);
+    if (!result.ok) return c.json({ error: "Post not found" }, result.code);
+
+    return c.json({ success: true });
+  },
+);
+
+// Public: users who liked a post, newest-like first.
+posts.get(
+  "/:id/liking_users",
+  zValidator("param", PostIdParamSchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  zValidator("query", PostListQuerySchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  async (c) => {
+    const result = await getLikingUsers(
+      c.req.valid("param").id,
+      c.req.valid("query"),
+    );
+    if (!result.ok) return c.json({ error: "Post not found" }, result.code);
+
+    return c.json({ users: result.users });
   },
 );

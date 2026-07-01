@@ -138,6 +138,8 @@ expect_code "PATCH own post -> 200" 200
 expect_json "  content updated" '.post.content' 'edited first'
 http POST /auth/register "$JAR_B" "{\"email\":\"$EMAIL_B\",\"password\":\"password123\",\"username\":\"$USER_B\",\"displayName\":\"Bob\"}"
 expect_code "register B -> 201" 201
+http GET /users/me "$JAR_B"
+BID="$(json '.user.id')"
 http PATCH "/posts/$P1" "$JAR_B" '{"content":"hijack"}'
 expect_code "PATCH other's post -> 403" 403
 http DELETE "/posts/$P1" "$JAR_B"
@@ -162,7 +164,56 @@ expect_code "posts for unknown user id -> 404" 404
 http GET "/users/by/username/ghost_${TS}/posts" none
 expect_code "posts for unknown username -> 404" 404
 
+echo; echo "# likes"
+http POST "/posts/$P2/like" "$JAR_B"
+expect_code "POST /posts/:id/like -> 200" 200
+http POST "/posts/$P2/like" "$JAR_B"
+expect_code "  like again idempotent -> 200" 200
+http GET "/posts/$P2/liking_users" none
+expect_code "GET /posts/:id/liking_users -> 200" 200
+expect_json "  exactly 1 liker (idempotent)" '.users | length' '1'
+expect_json "  liker username = B" '.users[0].username' "$USER_B"
+expect_json "  liker embeds displayName" '.users[0].displayName' 'Bob'
+http GET "/users/$BID/liked_posts" none
+expect_code "GET /users/:id/liked_posts -> 200" 200
+expect_json "  B liked 1 post" '.posts | length' '1'
+expect_json "  liked post is P2" '.posts[0].id' "$P2"
+http GET "/users/by/username/$USER_B/liked_posts" none
+expect_code "GET /users/by/username/:username/liked_posts -> 200" 200
+expect_json "  by-username liked 1" '.posts | length' '1'
+http POST "/posts/$P2/like" none
+expect_code "like no cookie -> 401" 401
+http POST "/posts/$BAD_ID/like" "$JAR_B"
+expect_code "like unknown post -> 404" 404
+http GET "/posts/$BAD_ID/liking_users" none
+expect_code "liking_users unknown post -> 404" 404
+http DELETE "/posts/$P2/like" "$JAR_B"
+expect_code "DELETE /posts/:id/like -> 200" 200
+http DELETE "/posts/$P2/like" "$JAR_B"
+expect_code "  unlike again idempotent -> 200" 200
+http GET "/posts/$P2/liking_users" none
+expect_json "  no likers after unlike" '.users | length' '0'
+http GET "/users/$BID/liked_posts" none
+expect_json "  liked_posts empty after unlike" '.posts | length' '0'
+
+echo; echo "# reposts"
+http POST "/posts/$P2/repost" "$JAR_B"
+expect_code "POST /posts/:id/repost -> 200" 200
+http POST "/posts/$P2/repost" "$JAR_B"
+expect_code "  repost again idempotent -> 200" 200
+http DELETE "/posts/$P2/repost" "$JAR_B"
+expect_code "DELETE /posts/:id/repost -> 200" 200
+http DELETE "/posts/$P2/repost" "$JAR_B"
+expect_code "  un-repost again idempotent -> 200" 200
+http POST "/posts/$BAD_ID/repost" "$JAR_B"
+expect_code "repost unknown post -> 404" 404
+http POST "/posts/$P2/repost" none
+expect_code "repost no cookie -> 401" 401
+
 echo; echo "# delete + cascade"
+# B likes P1 first, so we can confirm the like is cascade-removed with the post.
+http POST "/posts/$P1/like" "$JAR_B"
+expect_code "B likes P1 -> 200" 200
 http DELETE "/posts/$P1" "$JAR_A"
 expect_code "DELETE own post -> 200" 200
 http GET "/posts/$P1" none
@@ -173,6 +224,8 @@ http GET "/posts/$C" none
 expect_code "child cascade-deleted -> 404" 404
 http GET "/posts/$P2" none
 expect_code "unrelated post survives -> 200" 200
+http GET "/users/$BID/liked_posts" none
+expect_json "  like cascade-removed with post" '.posts | length' '0'
 
 echo
 echo "==== ${PASS} passed, ${FAIL} failed ===="

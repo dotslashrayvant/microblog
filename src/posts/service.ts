@@ -1,7 +1,7 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { posts, profiles } from "../db/schema";
+import { likes, posts, profiles, reposts } from "../db/schema";
 import type { CreatePostData, PostListQuery, UpdatePostData } from "./schema";
 
 // Public post shape, embeds the author's handle + display name.
@@ -116,6 +116,87 @@ export async function getPostsByAuthorId(
     .innerJoin(profiles, eq(profiles.userId, posts.authorId))
     .where(eq(posts.authorId, authorId))
     .orderBy(desc(posts.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  return { ok: true as const, posts: rows };
+}
+
+async function postExists(id: string) {
+  const [row] = await db
+    .select({ id: posts.id })
+    .from(posts)
+    .where(eq(posts.id, id));
+
+  return Boolean(row);
+}
+
+// Like / repost are idempotent: onConflictDoNothing means a repeat is a no-op.
+export async function likePost(userId: string, postId: string) {
+  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+
+  await db.insert(likes).values({ userId, postId }).onConflictDoNothing();
+  return { ok: true as const };
+}
+
+export async function unlikePost(userId: string, postId: string) {
+  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+
+  await db
+    .delete(likes)
+    .where(and(eq(likes.userId, userId), eq(likes.postId, postId)));
+  return { ok: true as const };
+}
+
+export async function repostPost(userId: string, postId: string) {
+  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+
+  await db.insert(reposts).values({ userId, postId }).onConflictDoNothing();
+  return { ok: true as const };
+}
+
+export async function unrepostPost(userId: string, postId: string) {
+  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+
+  await db
+    .delete(reposts)
+    .where(and(eq(reposts.userId, userId), eq(reposts.postId, postId)));
+  return { ok: true as const };
+}
+
+export async function getLikingUsers(
+  postId: string,
+  { limit, offset }: PostListQuery,
+) {
+  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+
+  const users = await db
+    .select({
+      id: profiles.userId,
+      username: profiles.username,
+      displayName: profiles.displayName,
+    })
+    .from(likes)
+    .innerJoin(profiles, eq(profiles.userId, likes.userId))
+    .where(eq(likes.postId, postId))
+    .orderBy(desc(likes.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  return { ok: true as const, users };
+}
+
+export async function getLikedPostsByUserId(
+  userId: string,
+  { limit, offset }: PostListQuery,
+) {
+  const rows = await db
+    .select(postColumns)
+    .from(likes)
+    .innerJoin(posts, eq(posts.id, likes.postId))
+    .innerJoin(profiles, eq(profiles.userId, posts.authorId))
+    .where(eq(likes.userId, userId))
+    .orderBy(desc(likes.createdAt))
     .limit(limit)
     .offset(offset);
 
