@@ -6,6 +6,7 @@ import {
   timestamp,
   boolean,
   date,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -17,6 +18,25 @@ export const users = pgTable("users", {
 
   // if false, limit functionality
   emailVerified: boolean("email_verified").default(false).notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const posts = pgTable("posts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+
+  authorId: uuid("author_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+
+  // self-referential; null = top-level post, set = reply.
+  // cascades: deleting a post removes its reply subtree.
+  parentId: uuid("parent_id").references((): AnyPgColumn => posts.id, {
+    onDelete: "cascade",
+  }),
+
+  content: text("content").notNull(),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

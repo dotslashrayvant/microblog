@@ -53,3 +53,25 @@ export async function updateProfile(userId: string, input: UpdateProfileData) {
   if (!updated) return { ok: false as const, code: 404 as const };
   return { ok: true as const, user: updated };
 }
+
+// Authenticated self-view — includes email / emailVerified, unlike the
+// public shape above.
+export async function getOwnProfile(userId: string) {
+  const [row] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      emailVerified: users.emailVerified,
+      createdAt: users.createdAt,
+      username: profiles.username,
+      displayName: profiles.displayName,
+      bio: profiles.bio,
+      birthDate: profiles.birthDate,
+    })
+    .from(users)
+    .innerJoin(profiles, eq(profiles.userId, users.id))
+    .where(eq(users.id, userId));
+
+  if (!row) return { ok: false as const, code: 404 as const };
+  return { ok: true as const, user: row };
+}

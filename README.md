@@ -45,16 +45,23 @@ Bun serves the default export from `src/index.ts` directly — there is no `Bun.
 
 ## API
 
-| Method  | Path                           | Description                                       |
-| ------- | ------------------------------ | ------------------------------------------------- |
-| `GET`   | `/health`                      | Health check — returns `{ status: "OK" }`         |
-| `POST`  | `/auth/register`               | Create an account, open a session                 |
-| `POST`  | `/auth/login`                  | Authenticate, open a session                      |
-| `POST`  | `/auth/logout`                 | End the session, clear the cookie                 |
-| `GET`   | `/auth/me`                     | Authenticated user's own profile (private fields) |
-| `GET`   | `/users/:id`                   | Public profile by user ID                         |
-| `GET`   | `/users/by/username/:username` | Public profile by username                        |
-| `PATCH` | `/users/me`                    | Update the authenticated user's profile           |
+| Method   | Path                                 | Description                                       |
+| -------- | ------------------------------------ | ------------------------------------------------- |
+| `GET`    | `/health`                            | Health check — returns `{ status: "OK" }`         |
+| `POST`   | `/auth/register`                     | Create an account, open a session                 |
+| `POST`   | `/auth/login`                        | Authenticate, open a session                      |
+| `POST`   | `/auth/logout`                       | End the session, clear the cookie                 |
+| `GET`    | `/users/me`                          | Authenticated user's own profile (private fields) |
+| `PATCH`  | `/users/me`                          | Update the authenticated user's profile           |
+| `GET`    | `/users/:id`                         | Public profile by user ID                         |
+| `GET`    | `/users/:id/posts`                   | Posts by user ID, newest first (paginated)        |
+| `GET`    | `/users/by/username/:username`       | Public profile by username                        |
+| `GET`    | `/users/by/username/:username/posts` | Posts by username, newest first (paginated)       |
+| `POST`   | `/posts`                             | Create a post (or a reply via `parentId`)         |
+| `GET`    | `/posts/:id`                         | Public post by ID                                 |
+| `PATCH`  | `/posts/:id`                         | Edit your own post                                |
+| `DELETE` | `/posts/:id`                         | Delete your own post (cascades to replies)        |
+| `POST`   | `/posts/:id/reply`                   | Reply to a post                                   |
 
 ### `POST /auth/register`
 
@@ -115,7 +122,7 @@ Deletes the session from Redis and clears the `session` cookie. Safe to call wit
 { "success": true }
 ```
 
-### `GET /auth/me`
+### `GET /users/me`
 
 Returns the authenticated user's **own** profile, including private fields (`email`, `emailVerified`). Requires a valid `session` cookie — `401` otherwise.
 
@@ -153,9 +160,39 @@ Public lookup by user ID. `:id` must be a UUID (`400` otherwise). Returns the **
 
 Returns `404` when no user matches.
 
+### `GET /users/:id/posts`
+
+Posts authored by the user, **newest first**. Public. `:id` must be a UUID (`400` otherwise); `404` when no user matches. Paginate with query params:
+
+- `limit` — 1–100, default `20`
+- `offset` — ≥ 0, default `0`
+
+On success (`200`) — an array of posts, each using the shape from [`POST /posts`](#post-posts):
+
+```json
+{
+  "posts": [
+    {
+      "id": "uuid",
+      "content": "hello world",
+      "parentId": null,
+      "authorId": "uuid",
+      "username": "alphanum_underscore",
+      "displayName": "Display Name",
+      "createdAt": "2026-07-01T08:05:14.876Z",
+      "updatedAt": "2026-07-01T08:05:14.876Z"
+    }
+  ]
+}
+```
+
 ### `GET /users/by/username/:username`
 
 Public lookup by username — same response shape as `GET /users/:id`. `:username` is validated against the same username rules (3–32 chars, letters/numbers/underscores); `400` otherwise, `404` when no user matches.
+
+### `GET /users/by/username/:username/posts`
+
+Same as `GET /users/:id/posts`, but resolves the author by username. `:username` follows the username rules; `400` on a malformed handle, `404` when no user matches. Identical `limit` / `offset` pagination and response shape.
 
 ### `PATCH /users/me`
 
@@ -191,6 +228,75 @@ An omitted field is left unchanged; sending `null` clears an optional field. On 
 
 Other responses: `400` with field-level errors on validation failure (including an empty body), `404` if the profile no longer exists.
 
+### `POST /posts`
+
+Create a post. Requires a valid `session` cookie (`401` otherwise). Request body:
+
+```json
+{
+  "content": "hello world",
+  "parentId": "uuid — optional"
+}
+```
+
+Validation (Zod):
+
+- `content` — 1–280 characters
+- `parentId` — optional; UUID of the post this one replies to
+
+On success (`201`) the created post is returned with the author's `username` / `displayName` embedded:
+
+```json
+{
+  "post": {
+    "id": "uuid",
+    "content": "hello world",
+    "parentId": null,
+    "authorId": "uuid",
+    "username": "alphanum_underscore",
+    "displayName": "Display Name",
+    "createdAt": "2026-07-01T08:05:14.876Z",
+    "updatedAt": "2026-07-01T08:05:14.876Z"
+  }
+}
+```
+
+Other responses: `400` on validation failure, `401` without a session, `404` when `parentId` points at a post that doesn't exist.
+
+### `GET /posts/:id`
+
+Public lookup by post ID. `:id` must be a UUID (`400` otherwise). Returns the post in the same shape as `POST /posts` (author embedded). `404` when no post matches.
+
+### `PATCH /posts/:id`
+
+Edit your own post's content. Requires a valid `session` cookie. `:id` must be a UUID. Request body:
+
+```json
+{ "content": "edited text" }
+```
+
+Validation: `content` — 1–280 characters. On success (`200`) the updated post is returned (with a refreshed `updatedAt`). Other responses: `400` on validation failure, `401` without a session, `403` when the post belongs to another user, `404` when it doesn't exist.
+
+### `DELETE /posts/:id`
+
+Delete your own post. Requires a valid `session` cookie. `:id` must be a UUID. Deleting a post **cascades to its replies** (any post whose `parentId` points at it). On success (`200`):
+
+```json
+{ "success": true }
+```
+
+Other responses: `401` without a session, `403` when the post belongs to another user, `404` when it doesn't exist.
+
+### `POST /posts/:id/reply`
+
+Create a reply whose parent is `:id` — a convenience for `POST /posts` with `parentId` taken from the path. Requires a valid `session` cookie. Request body:
+
+```json
+{ "content": "a reply" }
+```
+
+Validation: `content` — 1–280 characters. On success (`201`) the created reply is returned with `parentId` set to `:id`. Other responses: `400` on validation failure, `401` without a session, `404` when the parent post doesn't exist.
+
 ## Sessions & rate limiting
 
 - Sessions are stored in Redis (`session:<id>`), expiring after **1 hour**. The session ID is set as an `httpOnly`, `SameSite=Lax` cookie named `session` (`secure` in production).
@@ -206,7 +312,7 @@ src/
   config.ts           # env-derived constants, cookie options
   db/
     index.ts          # Drizzle connection (bun-sql)
-    schema.ts         # users, profiles tables
+    schema.ts         # users, profiles, posts tables
   middleware/
     rate-limit.ts     # per-IP Redis rate limiter
     verify-session.ts # session guard — sets userId on the context
@@ -216,7 +322,11 @@ src/
     route.ts          # thin Hono handlers
   users/
     schema.ts         # Zod request schemas
-    service.ts        # profile lookups + updates
+    service.ts        # profile lookups (public + self) + updates
+    route.ts          # thin Hono handlers (also lists a user's posts)
+  posts/
+    schema.ts         # Zod request schemas
+    service.ts        # post create/read/edit/delete + author listings
     route.ts          # thin Hono handlers
 ```
 

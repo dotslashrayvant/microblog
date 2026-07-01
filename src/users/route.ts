@@ -8,7 +8,14 @@ import {
   UserIdParamSchema,
   UsernameParamSchema,
 } from "./schema";
-import { getUserById, getUserByUsername, updateProfile } from "./service";
+import {
+  getOwnProfile,
+  getUserById,
+  getUserByUsername,
+  updateProfile,
+} from "./service";
+import { PostListQuerySchema } from "../posts/schema";
+import { getPostsByAuthorId } from "../posts/service";
 
 export const users = new Hono();
 
@@ -43,6 +50,15 @@ users.patch(
   },
 );
 
+// The authenticated user's own profile (includes email). Registered before
+// "/:id" so "me" isn't parsed as an id.
+users.get("/me", verifySession, async (c) => {
+  const result = await getOwnProfile(c.var.userId);
+  if (!result.ok) return c.json({ error: "User not found" }, result.code);
+
+  return c.json({ user: result.user });
+});
+
 // Public lookup by username/handle. Registered before "/:id" for clarity.
 users.get(
   "/by/username/:username",
@@ -57,6 +73,24 @@ users.get(
   },
 );
 
+// Public: posts authored by a username, newest-first.
+users.get(
+  "/by/username/:username/posts",
+  zValidator("param", UsernameParamSchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  zValidator("query", PostListQuerySchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  async (c) => {
+    const user = await getUserByUsername(c.req.valid("param").username);
+    if (!user.ok) return c.json({ error: "User not found" }, user.code);
+
+    const result = await getPostsByAuthorId(user.user.id, c.req.valid("query"));
+    return c.json({ posts: result.posts });
+  },
+);
+
 // Public lookup by id.
 users.get(
   "/:id",
@@ -68,5 +102,24 @@ users.get(
     if (!result.ok) return c.json({ error: "User not found" }, result.code);
 
     return c.json({ user: result.user });
+  },
+);
+
+// Public: posts authored by a user id, newest-first.
+users.get(
+  "/:id/posts",
+  zValidator("param", UserIdParamSchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  zValidator("query", PostListQuerySchema, (res, c) => {
+    if (!res.success) return badRequest(c, res.error.issues);
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const user = await getUserById(id);
+    if (!user.ok) return c.json({ error: "User not found" }, user.code);
+
+    const result = await getPostsByAuthorId(id, c.req.valid("query"));
+    return c.json({ posts: result.posts });
   },
 );
