@@ -8,7 +8,9 @@ export const UserRegisterSchema = z.object({
     .min(8, "Password must be at least 8 characters")
     .max(128),
 
-  handle: z
+  // aka handle, prepend @ in frontend
+  // must be unique
+  username: z
     .string()
     .min(3)
     .max(32)
@@ -17,6 +19,7 @@ export const UserRegisterSchema = z.object({
       "Handle may only contain letters, numbers, and underscores",
     ),
 
+  // the name that will be displayed on profile ui
   displayName: z.string().min(1).max(64),
 });
 

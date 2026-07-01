@@ -45,13 +45,16 @@ Bun serves the default export from `src/index.ts` directly — there is no `Bun.
 
 ## API
 
-| Method | Path             | Description                                    |
-| ------ | ---------------- | ---------------------------------------------- |
-| `GET`  | `/health`        | Health check — returns `{ status: "OK" }`      |
-| `POST` | `/auth/register` | Create an account, open a session              |
-| `POST` | `/auth/login`    | Authenticate, open a session                   |
-| `POST` | `/auth/logout`   | _Stub — not yet implemented_                   |
-| `GET`  | `/auth/me`       | _Stub — not yet implemented_                   |
+| Method  | Path                           | Description                                       |
+| ------- | ------------------------------ | ------------------------------------------------- |
+| `GET`   | `/health`                      | Health check — returns `{ status: "OK" }`         |
+| `POST`  | `/auth/register`               | Create an account, open a session                 |
+| `POST`  | `/auth/login`                  | Authenticate, open a session                      |
+| `POST`  | `/auth/logout`                 | End the session, clear the cookie                 |
+| `GET`   | `/auth/me`                     | Authenticated user's own profile (private fields) |
+| `GET`   | `/users/:id`                   | Public profile by user ID                         |
+| `GET`   | `/users/by/username/:username` | Public profile by username                        |
+| `PATCH` | `/users/me`                    | Update the authenticated user's profile           |
 
 ### `POST /auth/register`
 
@@ -61,7 +64,7 @@ Rate limited per IP (see below). Request body:
 {
   "email": "user@example.com",
   "password": "at-least-8-chars",
-  "handle": "alphanum_underscore",
+  "username": "alphanum_underscore",
   "displayName": "Display Name"
 }
 ```
@@ -70,7 +73,7 @@ Validation (Zod):
 
 - `email` — valid email address
 - `password` — 8–128 characters
-- `handle` — 3–32 chars, letters/numbers/underscores only, unique
+- `username` — 3–32 chars, letters/numbers/underscores only, unique
 - `displayName` — 1–64 characters
 
 On success (`201`) a `session` cookie is set:
@@ -104,6 +107,90 @@ Other responses: `400` with field-level errors on validation failure, `401` on b
 
 > To avoid leaking which emails are registered, the `401` response uses a deliberately generic message (`"Incorrect email or password"`). Login also verifies against a dummy hash when no user matches, so response timing doesn't reveal whether an email exists.
 
+### `POST /auth/logout`
+
+Deletes the session from Redis and clears the `session` cookie. Safe to call without a session; always returns `200`:
+
+```json
+{ "success": true }
+```
+
+### `GET /auth/me`
+
+Returns the authenticated user's **own** profile, including private fields (`email`, `emailVerified`). Requires a valid `session` cookie — `401` otherwise.
+
+```json
+{
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "emailVerified": false,
+    "createdAt": "2026-07-01T08:05:14.876Z",
+    "username": "alphanum_underscore",
+    "displayName": "Display Name",
+    "bio": null,
+    "birthDate": null
+  }
+}
+```
+
+### `GET /users/:id`
+
+Public lookup by user ID. `:id` must be a UUID (`400` otherwise). Returns the **public** profile — `email` / `emailVerified` are never included:
+
+```json
+{
+  "user": {
+    "id": "uuid",
+    "username": "alphanum_underscore",
+    "displayName": "Display Name",
+    "bio": null,
+    "birthDate": null,
+    "createdAt": "2026-07-01T08:05:14.876Z"
+  }
+}
+```
+
+Returns `404` when no user matches.
+
+### `GET /users/by/username/:username`
+
+Public lookup by username — same response shape as `GET /users/:id`. `:username` is validated against the same username rules (3–32 chars, letters/numbers/underscores); `400` otherwise, `404` when no user matches.
+
+### `PATCH /users/me`
+
+Update the authenticated user's profile. Requires a valid `session` cookie (`401` otherwise). Request body — all fields optional, but at least one must be present:
+
+```json
+{
+  "displayName": "New Name",
+  "bio": "hello world",
+  "birthDate": "1990-01-01"
+}
+```
+
+Validation (Zod):
+
+- `displayName` — 1–64 characters
+- `bio` — up to 500 characters, or `null` to clear
+- `birthDate` — ISO date (`YYYY-MM-DD`), or `null` to clear
+
+An omitted field is left unchanged; sending `null` clears an optional field. On success (`200`) the updated profile is returned:
+
+```json
+{
+  "user": {
+    "id": "uuid",
+    "username": "alphanum_underscore",
+    "displayName": "New Name",
+    "bio": "hello world",
+    "birthDate": "1990-01-01"
+  }
+}
+```
+
+Other responses: `400` with field-level errors on validation failure (including an empty body), `404` if the profile no longer exists.
+
 ## Sessions & rate limiting
 
 - Sessions are stored in Redis (`session:<id>`), expiring after **1 hour**. The session ID is set as an `httpOnly`, `SameSite=Lax` cookie named `session` (`secure` in production).
@@ -122,9 +209,14 @@ src/
     schema.ts         # users, profiles tables
   middleware/
     rate-limit.ts     # per-IP Redis rate limiter
+    verify-session.ts # session guard — sets userId on the context
   auth/
     schema.ts         # Zod request schemas
     service.ts        # auth business logic (registration, login, sessions)
+    route.ts          # thin Hono handlers
+  users/
+    schema.ts         # Zod request schemas
+    service.ts        # profile lookups + updates
     route.ts          # thin Hono handlers
 ```
 

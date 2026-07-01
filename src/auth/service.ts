@@ -63,7 +63,7 @@ export async function registerUser(input: UserRegisterData) {
       // create a user's profile on db
       await tx.insert(profiles).values({
         userId: created.id,
-        handle: input.handle,
+        username: input.username,
         displayName: input.displayName,
       });
 
@@ -100,7 +100,7 @@ export async function getUserProfile(userId: string) {
       email: users.email,
       emailVerified: users.emailVerified,
       createdAt: users.createdAt,
-      handle: profiles.handle,
+      username: profiles.username,
       displayName: profiles.displayName,
       bio: profiles.bio,
       birthDate: profiles.birthDate,
