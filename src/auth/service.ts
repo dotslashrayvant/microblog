@@ -46,6 +46,14 @@ export async function registerUser(input: UserRegisterData) {
   // user already exists
   if (existing) return { ok: false, code: 409 as const };
 
+  // username already taken
+  const [taken] = await db
+    .select({ userId: profiles.userId })
+    .from(profiles)
+    .where(eq(profiles.username, input.username));
+
+  if (taken) return { ok: false, code: 409 as const };
+
   // create a new user
   let user: { id: string; email: string };
   const passwordHash = await Bun.password.hash(input.password);
