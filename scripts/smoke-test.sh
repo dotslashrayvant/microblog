@@ -28,8 +28,8 @@ for tool in curl jq; do
 done
 [[ "$MISSING" == 1 ]] && { echo "install jq with: brew install jq"; exit 1; }
 
-# --- colors (only when writing to a terminal) ---
-if [[ -t 1 ]]; then G=$'\033[32m'; R=$'\033[31m'; DIM=$'\033[2m'; Z=$'\033[0m'; else G= R= DIM= Z=; fi
+# --- colors (when writing to a terminal, or forced via FORCE_COLOR=1) ---
+if [[ -t 1 || -n "${FORCE_COLOR:-}" ]]; then G=$'\033[32m'; R=$'\033[31m'; DIM=$'\033[2m'; Z=$'\033[0m'; else G= R= DIM= Z=; fi
 
 PASS=0
 FAIL=0
