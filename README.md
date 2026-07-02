@@ -2,6 +2,8 @@
 
 A microblogging JSON API built on [Bun](https://bun.sh) and [Hono](https://hono.dev), with Postgres (via [Drizzle ORM](https://orm.drizzle.team)) for storage and Redis for sessions and rate limiting. No frontend — just the API.
 
+![End-to-end smoke test: 135 checks passing](assets/smoke-test.gif)
+
 ## Features
 
 - **Auth** — cookie-based sessions: register, login, logout
@@ -125,6 +127,8 @@ Takes the same `?limit` / `?offset` params as the other list endpoints.
 | GET    | `/health` | Health check |
 
 ## Architecture
+
+![Architecture diagram](assets/architecture.png)
 
 Each feature lives in its own directory under `src/` and splits three ways:
 
