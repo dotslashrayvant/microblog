@@ -7,6 +7,7 @@ A microblogging JSON API built on [Bun](https://bun.sh) and [Hono](https://hono.
 - **Auth** — cookie-based sessions: register, login, logout
 - **Users** — public profiles (lookup by id or username), own-profile view and editing
 - **Posts** — create, read, edit, delete; threaded replies; likes and reposts
+- **Social graph** — follow/unfollow, follower/following lists, and a home feed
 - **Security** — hashed passwords, timing-safe login, per-IP rate limiting on auth routes
 
 ## Tech stack
@@ -44,8 +45,8 @@ NODE_ENV=development   # "production" enables secure cookies
 Push the schema to the database, then start the dev server:
 
 ```bash
-bun run migrate   # drizzle-kit push
-bun run dev       # hot-reloading server (src/index.ts)
+bun run push        # drizzle-kit push
+bun run dev         # hot-reloading server (src/index.ts)
 ```
 
 ### Other commands
@@ -83,6 +84,14 @@ Register and login are rate-limited per IP (25 requests / 30 min).
 | GET    | `/users/by/username/:username`           | Public profile by username                   |
 | GET    | `/users/by/username/:username/posts`     | Posts authored by a username                 |
 | GET    | `/users/by/username/:username/liked_posts` | Posts liked by a username                  |
+| POST   | `/users/:id/follow`                      | 🔒 Follow a user (idempotent)                |
+| DELETE | `/users/:id/follow`                      | 🔒 Unfollow a user (idempotent)              |
+| GET    | `/users/:id/followers`                   | Users who follow a user, newest follow first |
+| GET    | `/users/:id/following`                   | Users a user follows, newest follow first    |
+| GET    | `/users/by/username/:username/followers` | Followers of a username                      |
+| GET    | `/users/by/username/:username/following` | Users a username follows                     |
+
+Profile responses include `followersCount` and `followingCount`. Following yourself returns `400`.
 
 ### Posts
 
@@ -100,6 +109,14 @@ Register and login are rate-limited per IP (25 requests / 30 min).
 | GET    | `/posts/:id/liking_users` | Users who liked a post, newest like first          |
 
 Post content is 1–280 characters. List endpoints accept `?limit` (1–100, default 20) and `?offset` (default 0) query params.
+
+### Feed
+
+| Method | Path    | Description                                                        |
+| ------ | ------- | ------------------------------------------------------------------ |
+| GET    | `/feed` | 🔒 Home timeline: posts from followed users plus your own, newest first |
+
+Takes the same `?limit` / `?offset` params as the other list endpoints.
 
 ### Misc
 
@@ -120,8 +137,9 @@ src/
 ├── index.ts          # app wiring; Bun serves the default export
 ├── config.ts         # shared constants (TTLs, cookie options)
 ├── auth/             # register, login, logout, sessions
-├── users/            # profiles
+├── users/            # profiles, follows
 ├── posts/            # posts, replies, likes, reposts
+├── feed/             # home timeline
 ├── db/               # Drizzle connection + table definitions
 └── middleware/       # rateLimit, verifySession
 ```
@@ -132,6 +150,7 @@ src/
 - `profiles` — one per user: unique username, display name, optional bio/birth date
 - `posts` — self-referential `parentId` for replies; deleting a post cascades to its reply subtree
 - `likes` / `reposts` — composite `(user, post)` primary keys make them idempotent
+- `follows` — composite `(follower, followee)` primary key, self-follows blocked by a check constraint; drives the follower counts and the home feed
 
 ### Security notes
 

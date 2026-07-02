@@ -210,6 +210,62 @@ expect_code "repost unknown post -> 404" 404
 http POST "/posts/$P2/repost" none
 expect_code "repost no cookie -> 401" 401
 
+echo; echo "# follows"
+http POST "/users/$AID/follow" "$JAR_B"
+expect_code "POST /users/:id/follow -> 200" 200
+http POST "/users/$AID/follow" "$JAR_B"
+expect_code "  follow again idempotent -> 200" 200
+http POST "/users/$BID/follow" "$JAR_B"
+expect_code "self-follow -> 400" 400
+http POST "/users/$BAD_ID/follow" "$JAR_B"
+expect_code "follow unknown user -> 404" 404
+http POST "/users/$AID/follow" none
+expect_code "follow no cookie -> 401" 401
+http GET "/users/$AID/followers" none
+expect_code "GET /users/:id/followers -> 200" 200
+expect_json "  A has 1 follower (idempotent)" '.users | length' '1'
+expect_json "  follower username = B" '.users[0].username' "$USER_B"
+http GET "/users/$BID/following" none
+expect_code "GET /users/:id/following -> 200" 200
+expect_json "  B follows 1 user" '.users | length' '1'
+expect_json "  following username = A" '.users[0].username' "$USER_A"
+http GET "/users/by/username/$USER_A/followers" none
+expect_code "GET /users/by/username/:username/followers -> 200" 200
+expect_json "  by-username 1 follower" '.users | length' '1'
+http GET "/users/by/username/$USER_B/following" none
+expect_code "GET /users/by/username/:username/following -> 200" 200
+expect_json "  by-username follows 1" '.users | length' '1'
+http GET "/users/$BAD_ID/followers" none
+expect_code "followers of unknown user -> 404" 404
+http GET "/users/$AID" none
+expect_json "profile followersCount = 1" '.user.followersCount' '1'
+expect_json "profile followingCount = 0" '.user.followingCount' '0'
+
+echo; echo "# feed"
+http GET /feed none
+expect_code "GET /feed no cookie -> 401" 401
+http GET /feed "$JAR_B"
+expect_code "GET /feed -> 200" 200
+expect_json "  B's feed has A's 4 posts" '.posts | length' '4'
+http POST /posts "$JAR_B" '{"content":"bob post"}'
+expect_code "B posts -> 201" 201
+http GET /feed "$JAR_B"
+expect_json "  feed includes own post (5)" '.posts | length' '5'
+expect_json "  newest-first order" '[.posts[].createdAt] == ([.posts[].createdAt] | sort | reverse)' 'true'
+expect_json "  newest is B's own post" '.posts[0].username' "$USER_B"
+http GET "/feed?limit=2" "$JAR_B"
+expect_json "  ?limit=2 returns 2" '.posts | length' '2'
+http DELETE "/users/$AID/follow" "$JAR_B"
+expect_code "DELETE /users/:id/follow -> 200" 200
+http DELETE "/users/$AID/follow" "$JAR_B"
+expect_code "  unfollow again idempotent -> 200" 200
+http GET /feed "$JAR_B"
+expect_json "  feed only own post after unfollow" '.posts | length' '1'
+http GET "/users/$AID/followers" none
+expect_json "  A has 0 followers after unfollow" '.users | length' '0'
+http GET "/users/$AID" none
+expect_json "  followersCount back to 0" '.user.followersCount' '0'
+
 echo; echo "# delete + cascade"
 # B likes P1 first, so we can confirm the like is cascade-removed with the post.
 http POST "/posts/$P1/like" "$JAR_B"

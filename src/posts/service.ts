@@ -1,7 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 
 import { db } from "../db";
-import { likes, posts, profiles, reposts } from "../db/schema";
+import { follows, likes, posts, profiles, reposts } from "../db/schema";
 import type { CreatePostData, PostListQuery, UpdatePostData } from "./schema";
 
 // Public post shape, embeds the author's handle + display name.
@@ -59,6 +59,7 @@ export async function createPost(authorId: string, input: CreatePostData) {
 
 export async function getPostById(id: string) {
   const post = await fetchPostById(id);
+
   if (!post) return { ok: false as const, code: 404 as const };
 
   return { ok: true as const, post };
@@ -97,6 +98,7 @@ export async function deletePost(id: string, authorId: string) {
     .where(eq(posts.id, id));
 
   if (!existing) return { ok: false as const, code: 404 as const };
+
   if (existing.authorId !== authorId)
     return { ok: false as const, code: 403 as const };
 
@@ -133,14 +135,16 @@ async function postExists(id: string) {
 
 // Like / repost are idempotent: onConflictDoNothing means a repeat is a no-op.
 export async function likePost(userId: string, postId: string) {
-  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+  if (!(await postExists(postId)))
+    return { ok: false as const, code: 404 as const };
 
   await db.insert(likes).values({ userId, postId }).onConflictDoNothing();
   return { ok: true as const };
 }
 
 export async function unlikePost(userId: string, postId: string) {
-  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+  if (!(await postExists(postId)))
+    return { ok: false as const, code: 404 as const };
 
   await db
     .delete(likes)
@@ -149,14 +153,16 @@ export async function unlikePost(userId: string, postId: string) {
 }
 
 export async function repostPost(userId: string, postId: string) {
-  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+  if (!(await postExists(postId)))
+    return { ok: false as const, code: 404 as const };
 
   await db.insert(reposts).values({ userId, postId }).onConflictDoNothing();
   return { ok: true as const };
 }
 
 export async function unrepostPost(userId: string, postId: string) {
-  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+  if (!(await postExists(postId)))
+    return { ok: false as const, code: 404 as const };
 
   await db
     .delete(reposts)
@@ -168,7 +174,8 @@ export async function getLikingUsers(
   postId: string,
   { limit, offset }: PostListQuery,
 ) {
-  if (!(await postExists(postId))) return { ok: false as const, code: 404 as const };
+  if (!(await postExists(postId)))
+    return { ok: false as const, code: 404 as const };
 
   const users = await db
     .select({
@@ -184,6 +191,28 @@ export async function getLikingUsers(
     .offset(offset);
 
   return { ok: true as const, users };
+}
+
+// Home timeline: posts from followed users plus the user's own, newest first.
+export async function getHomeFeed(
+  userId: string,
+  { limit, offset }: PostListQuery,
+) {
+  const followees = db
+    .select({ id: follows.followeeId })
+    .from(follows)
+    .where(eq(follows.followerId, userId));
+
+  const rows = await db
+    .select(postColumns)
+    .from(posts)
+    .innerJoin(profiles, eq(profiles.userId, posts.authorId))
+    .where(or(eq(posts.authorId, userId), inArray(posts.authorId, followees)))
+    .orderBy(desc(posts.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  return { ok: true as const, posts: rows };
 }
 
 export async function getLikedPostsByUserId(

@@ -19,7 +19,9 @@
   },
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "migrate": "bunx drizzle-kit push",
-    "database": "bunx drizzle-kit studio"
+    "push": "bunx drizzle-kit push",
+    "database": "bunx drizzle-kit studio",
+    "generate": "bunx drizzle-kit generate",
+    "migrate": "bunx drizzle-kit migrate"
   }
 }

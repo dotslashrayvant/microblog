@@ -1,6 +1,8 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   primaryKey,
+  check,
   uuid,
   varchar,
   text,
@@ -71,25 +73,54 @@ export const likes = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+
     postId: uuid("post_id")
       .notNull()
       .references(() => posts.id, { onDelete: "cascade" }),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
+
   (t) => [primaryKey({ columns: [t.userId, t.postId] })],
 );
 
-// Same shape as likes - one repost per (user, post).
+// One row per (follower, followee) - the composite PK makes follows
+// idempotent, like likes/reposts. The check constraint backs up the
+// service-level self-follow guard.
+export const follows = pgTable(
+  "follows",
+  {
+    followerId: uuid("follower_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+
+    followeeId: uuid("followee_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+
+  (t) => [
+    primaryKey({ columns: [t.followerId, t.followeeId] }),
+    check("no_self_follow", sql`${t.followerId} <> ${t.followeeId}`),
+  ],
+);
+
+// one repost per (user, post).
 export const reposts = pgTable(
   "reposts",
   {
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+
     postId: uuid("post_id")
       .notNull()
       .references(() => posts.id, { onDelete: "cascade" }),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
+
   (t) => [primaryKey({ columns: [t.userId, t.postId] })],
 );

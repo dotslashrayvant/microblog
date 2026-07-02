@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-A microblogging JSON API on **Bun + Hono**, with Postgres (Drizzle ORM via `drizzle-orm/bun-sql`) for storage and Redis for sessions and rate limiting. No frontend. Implemented features: auth (register/login/logout), user profiles (`src/users/`), and posts with replies, likes, and reposts (`src/posts/`). The full endpoint list lives in README.md — keep it in sync when adding routes.
+A microblogging JSON API on **Bun + Hono**, with Postgres (Drizzle ORM via `drizzle-orm/bun-sql`) for storage and Redis for sessions and rate limiting. No frontend. Implemented features: auth (register/login/logout), user profiles and follows (`src/users/`), posts with replies, likes, and reposts (`src/posts/`), and a home feed (`src/feed/`). The full endpoint list lives in README.md — keep it in sync when adding routes.
 
 ## Commands
 
@@ -41,6 +41,8 @@ Other structure: `src/index.ts` wires the app and `export default app` (Bun serv
 - The authenticated user's own profile is `GET/PATCH /users/me` (there is no `/auth/me`). `/users/me` routes are registered **before** `/users/:id` so `"me"` isn't parsed as an id.
 - Post content is 1–280 chars (Zod `content` schema in `src/posts/schema.ts`). Replies are posts with a `parentId` (self-referential FK; deleting a post cascades to its reply subtree).
 - Likes and reposts use composite `(userId, postId)` primary keys, making them **idempotent** — repeated like/repost or unlike/unrepost is a no-op success, not an error.
+- Follows work the same way (composite `(followerId, followeeId)` PK, idempotent). Self-follow returns `400`, backed by a DB check constraint. Public profile responses embed `followersCount`/`followingCount` via `db.$count` subqueries.
+- `GET /feed` (in `src/feed/`, service logic in `posts/service.ts` to reuse `postColumns`) returns posts from followed users **plus the user's own**, newest first.
 - List endpoints paginate with `limit` (1–100, default 20) / `offset` query params via `PostListQuerySchema`, newest-first.
 - Ownership checks (edit/delete own post) live in the service and return `{ ok: false, code: 403 }`; missing resources return `code: 404`.
 
