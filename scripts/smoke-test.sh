@@ -11,6 +11,11 @@
 #   to point elsewhere, e.g. ./scripts/smoke-test.sh http://localhost:3737
 #
 # Requires: curl, jq. Creates throwaway users/posts (unique per run).
+#
+# NOTE: register/login are rate-limited (25 ops / 30 min per IP) and a full
+# run uses ~11 of them, so two back-to-back runs are fine but a third within
+# the window will trip the limit. On a 429 the script aborts with a message
+# instead of reporting bogus failures.
 
 set -uo pipefail
 
@@ -40,6 +45,13 @@ http() {
   local out; out="$(curl "${args[@]}")"
   CODE="${out##*$'\n'}"
   BODY="${out%$'\n'*}"
+
+  if [[ "$CODE" == "429" ]]; then
+    echo
+    echo "aborted: auth rate limit hit (25 ops / 30 min per IP)."
+    echo "wait for the window to reset or clear the ratelimit:* keys in Redis."
+    exit 1
+  fi
 }
 
 json() { printf '%s' "$BODY" | jq -r "$1" 2>/dev/null; }
@@ -66,7 +78,8 @@ expect_json() {
 # --- cookie jars ---
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-JAR_A="$TMP/a.txt"; JAR_B="$TMP/b.txt"; touch "$JAR_A" "$JAR_B"
+JAR_A="$TMP/a.txt"; JAR_B="$TMP/b.txt"; JAR_C="$TMP/c.txt"; JAR_L="$TMP/l.txt"
+touch "$JAR_A" "$JAR_B" "$JAR_C" "$JAR_L"
 
 # --- preflight ---
 http GET /health none
@@ -80,6 +93,7 @@ echo "testing against $BASE"
 TS="$(date +%s)"
 EMAIL_A="a_${TS}@example.com"; USER_A="alice_${TS}"
 EMAIL_B="b_${TS}@example.com"; USER_B="bob_${TS}"
+EMAIL_C="c_${TS}@example.com"; USER_C="carol_${TS}"
 if command -v uuidgen >/dev/null 2>&1; then
   BAD_ID="$(uuidgen | tr 'A-Z' 'a-z')"
 else
@@ -98,6 +112,54 @@ http GET /users/me none
 expect_code "GET /users/me no cookie -> 401" 401
 http GET /auth/me "$JAR_A"
 expect_code "GET /auth/me removed -> 404" 404
+
+echo; echo "# register validation / duplicates"
+http POST /auth/register none '{"email":"not-an-email","password":"password123","username":"vuser","displayName":"V"}'
+expect_code "register bad email -> 400" 400
+http POST /auth/register none "{\"email\":\"v_${TS}@example.com\",\"password\":\"short\",\"username\":\"vuser_${TS}\",\"displayName\":\"V\"}"
+expect_code "register short password -> 400" 400
+http POST /auth/register none "{\"email\":\"v_${TS}@example.com\",\"password\":\"password123\",\"username\":\"bad handle!\",\"displayName\":\"V\"}"
+expect_code "register bad username chars -> 400" 400
+http POST /auth/register none "{\"email\":\"$EMAIL_A\",\"password\":\"password123\",\"username\":\"other_${TS}\",\"displayName\":\"Dup\"}"
+expect_code "register duplicate email -> 409" 409
+expect_json "  generic failure message" '.error' 'Registration failed'
+http POST /auth/register none "{\"email\":\"dupu_${TS}@example.com\",\"password\":\"password123\",\"username\":\"$USER_A\",\"displayName\":\"Dup\"}"
+expect_code "register duplicate username -> 409" 409
+expect_json "  generic failure message" '.error' 'Registration failed'
+
+echo; echo "# login / logout"
+http POST /auth/login none "{\"email\":\"$EMAIL_A\",\"password\":\"wrongpassword\"}"
+expect_code "login wrong password -> 401" 401
+expect_json "  generic message" '.error' 'Incorrect email or password'
+http POST /auth/login none "{\"email\":\"ghost_${TS}@example.com\",\"password\":\"password123\"}"
+expect_code "login unknown email -> 401" 401
+expect_json "  same generic message" '.error' 'Incorrect email or password'
+http POST /auth/login "$JAR_L" "{\"email\":\"$EMAIL_A\",\"password\":\"password123\"}"
+expect_code "login correct -> 200" 200
+http GET /users/me "$JAR_L"
+expect_code "  session from login works -> 200" 200
+expect_json "  logged in as A" '.user.email' "$EMAIL_A"
+http POST /auth/logout "$JAR_L"
+expect_code "POST /auth/logout -> 200" 200
+http GET /users/me "$JAR_L"
+expect_code "  session dead after logout -> 401" 401
+http POST /auth/logout none
+expect_code "logout without cookie -> 200" 200
+
+echo; echo "# profile updates"
+http PATCH /users/me "$JAR_A" '{"displayName":"Alice II","bio":"hello"}'
+expect_code "PATCH /users/me -> 200" 200
+expect_json "  displayName updated" '.user.displayName' 'Alice II'
+expect_json "  bio set" '.user.bio' 'hello'
+http PATCH /users/me "$JAR_A" '{"bio":null}'
+expect_code "  clear bio with null -> 200" 200
+expect_json "  bio cleared" '.user.bio' 'null'
+http PATCH /users/me "$JAR_A" '{}'
+expect_code "PATCH empty body -> 400" 400
+http PATCH /users/me "$JAR_A" '{"birthDate":"not-a-date"}'
+expect_code "PATCH bad birthDate -> 400" 400
+http PATCH /users/me none '{"displayName":"X"}'
+expect_code "PATCH no cookie -> 401" 401
 
 echo; echo "# create / read posts"
 http POST /posts "$JAR_A" '{"content":"first post"}'
@@ -131,6 +193,16 @@ http POST /posts "$JAR_A" '{"content":""}'
 expect_code "POST /posts empty content -> 400" 400
 http POST /posts "$JAR_A" "{\"content\":\"$LONG\"}"
 expect_code "POST /posts >280 chars -> 400" 400
+http GET /posts/not-a-uuid none
+expect_code "GET /posts malformed id -> 400" 400
+http GET /users/not-a-uuid none
+expect_code "GET /users malformed id -> 400" 400
+http GET "/users/$AID/posts?limit=0" none
+expect_code "?limit=0 -> 400" 400
+http GET "/users/$AID/posts?limit=101" none
+expect_code "?limit=101 -> 400" 400
+http GET "/users/$AID/posts?offset=-1" none
+expect_code "?offset=-1 -> 400" 400
 
 echo; echo "# edit / ownership"
 http PATCH "/posts/$P1" "$JAR_A" '{"content":"edited first"}'
@@ -237,9 +309,19 @@ expect_code "GET /users/by/username/:username/following -> 200" 200
 expect_json "  by-username follows 1" '.users | length' '1'
 http GET "/users/$BAD_ID/followers" none
 expect_code "followers of unknown user -> 404" 404
+http GET "/users/$BAD_ID/following" none
+expect_code "following of unknown user -> 404" 404
+http DELETE "/users/$BAD_ID/follow" "$JAR_B"
+expect_code "unfollow unknown user -> 404" 404
+http DELETE "/users/$AID/follow" none
+expect_code "unfollow no cookie -> 401" 401
 http GET "/users/$AID" none
 expect_json "profile followersCount = 1" '.user.followersCount' '1'
 expect_json "profile followingCount = 0" '.user.followingCount' '0'
+http GET "/users/$BID" none
+expect_json "B followingCount = 1" '.user.followingCount' '1'
+http GET /users/me "$JAR_B"
+expect_json "  own profile has counts too" '.user.followingCount' '1'
 
 echo; echo "# feed"
 http GET /feed none
@@ -255,6 +337,15 @@ expect_json "  newest-first order" '[.posts[].createdAt] == ([.posts[].createdAt
 expect_json "  newest is B's own post" '.posts[0].username' "$USER_B"
 http GET "/feed?limit=2" "$JAR_B"
 expect_json "  ?limit=2 returns 2" '.posts | length' '2'
+# C is followed by nobody - her posts must stay out of B's feed.
+http POST /auth/register "$JAR_C" "{\"email\":\"$EMAIL_C\",\"password\":\"password123\",\"username\":\"$USER_C\",\"displayName\":\"Carol\"}"
+expect_code "register C -> 201" 201
+http POST /posts "$JAR_C" '{"content":"carol post"}'
+expect_code "C posts -> 201" 201
+CP="$(json '.post.id')"
+http GET /feed "$JAR_B"
+expect_json "  unfollowed C excluded (still 5)" '.posts | length' '5'
+expect_json "  C's post not in feed" "[.posts[].id] | index(\"$CP\")" 'null'
 http DELETE "/users/$AID/follow" "$JAR_B"
 expect_code "DELETE /users/:id/follow -> 200" 200
 http DELETE "/users/$AID/follow" "$JAR_B"
