@@ -2,14 +2,14 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 
-import { verifySession } from "../middleware/verify-session";
-
+import { PostListQuerySchema } from "@/posts/schema";
+import { verifySession } from "@/middleware/verify-session";
+import { getLikedPostsByUserId, getPostsByAuthorId } from "@/posts/service";
 import {
   UpdateProfileSchema,
   UserIdParamSchema,
   UsernameParamSchema,
 } from "./schema";
-
 import {
   followUser,
   getFollowers,
@@ -21,26 +21,7 @@ import {
   updateProfile,
 } from "./service";
 
-import { PostListQuerySchema } from "../posts/schema";
-import { getLikedPostsByUserId, getPostsByAuthorId } from "../posts/service";
-
 export const users = new Hono();
-
-// Same 400 shape used by the auth routes.
-function badRequest(
-  c: Context,
-  issues: { path: PropertyKey[]; message: string }[],
-) {
-  return c.json(
-    {
-      error: issues.map((i) => ({
-        field: i.path.join("."),
-        message: i.message,
-      })),
-    },
-    400,
-  );
-}
 
 // Update the authenticated user's profile.
 users.patch(
@@ -57,10 +38,10 @@ users.patch(
   },
 );
 
-// The authenticated user's own profile (includes email). Registered before
-// "/:id" so "me" isn't parsed as an id.
+// The authenticated user's own profile (includes email).
 users.get("/me", verifySession, async (c) => {
   const result = await getOwnProfile(c.var.userId);
+
   if (!result.ok) return c.json({ error: "User not found" }, result.code);
 
   return c.json({ user: result.user });
@@ -82,7 +63,7 @@ users.get(
   },
 );
 
-// Public: posts authored by a username, newest-first.
+// posts authored by a username, newest-first.
 users.get(
   "/by/username/:username/posts",
 
@@ -103,7 +84,7 @@ users.get(
   },
 );
 
-// Public: users who follow a username, newest follow first.
+// users who follow a username, newest follow first.
 users.get(
   "/by/username/:username/followers",
 
@@ -126,7 +107,7 @@ users.get(
   },
 );
 
-// Public: users a username follows, newest follow first.
+// users a username follows, newest follow first.
 users.get(
   "/by/username/:username/following",
 
@@ -149,7 +130,7 @@ users.get(
   },
 );
 
-// Public: posts liked by a username, newest-like first.
+// posts liked by a username, newest-like first.
 users.get(
   "/by/username/:username/liked_posts",
 
@@ -190,7 +171,7 @@ users.get(
   },
 );
 
-// Public: posts authored by a user id, newest-first.
+// posts authored by a user id, newest-first.
 users.get(
   "/:id/posts",
 
@@ -214,7 +195,7 @@ users.get(
   },
 );
 
-// Public: posts liked by a user id, newest-like first.
+// posts liked by a user id, newest-like first.
 users.get(
   "/:id/liked_posts",
 
@@ -280,7 +261,7 @@ users.delete(
   },
 );
 
-// Public: users who follow a user id, newest follow first.
+// users who follow a user id, newest follow first.
 users.get(
   "/:id/followers",
 
@@ -304,7 +285,7 @@ users.get(
   },
 );
 
-// Public: users a user id follows, newest follow first.
+// users a user id follows, newest follow first.
 users.get(
   "/:id/following",
 
@@ -327,3 +308,19 @@ users.get(
     return c.json({ users: result.users });
   },
 );
+
+// Same 400 shape used by the auth routes.
+function badRequest(
+  c: Context,
+  issues: { path: PropertyKey[]; message: string }[],
+) {
+  return c.json(
+    {
+      error: issues.map((i) => ({
+        field: i.path.join("."),
+        message: i.message,
+      })),
+    },
+    400,
+  );
+}

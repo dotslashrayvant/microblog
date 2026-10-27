@@ -2,24 +2,20 @@ import { Hono } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import { zValidator } from "@hono/zod-validator";
 
-import { rateLimit } from "../middleware/rate-limit";
-import { COOKIE_NAME, cookieOptions } from "../config";
-import { UserLoginSchema, UserRegisterSchema } from "./schema";
-
-import {
-  createSession,
-  destroySession,
-  loginUser,
-  registerUser,
-} from "./service";
+import { COOKIE_NAME, cookieOptions } from "@/config";
+import { rateLimit } from "@/middleware/rate-limit";
+import { LoginSchema, RegisterSchema } from "./schema";
+import { loginUser, registerUser } from "./service";
+import { createSession, destroySession } from "./session";
 
 export const auth = new Hono();
 
 auth.post(
-  "/register",
+  "/signup",
+
   rateLimit,
 
-  zValidator("json", UserRegisterSchema, (res, c) => {
+  zValidator("json", RegisterSchema, (res, c) => {
     if (!res.success)
       return c.json(
         {
@@ -48,9 +44,10 @@ auth.post(
 
 auth.post(
   "/login",
+
   rateLimit,
 
-  zValidator("json", UserLoginSchema, (res, c) => {
+  zValidator("json", LoginSchema, (res, c) => {
     if (!res.success)
       return c.json(
         {
@@ -65,6 +62,7 @@ auth.post(
 
   async (c) => {
     const result = await loginUser(c.req.valid("json"));
+
     if (!result.ok || !result.userId) {
       return c.json({ error: "Incorrect email or password" }, 401);
     }

@@ -2,7 +2,7 @@ import { redis } from "bun";
 import { getConnInfo } from "hono/bun";
 import { createMiddleware } from "hono/factory";
 
-import { AUTH_OPS_LIMIT, AUTH_RATE_LIMIT_SECONDS } from "../config";
+import { AUTH_OPS_LIMIT, AUTH_RATE_LIMIT_SECONDS } from "@/config";
 
 export const rateLimit = createMiddleware(async (c, next) => {
   const info = getConnInfo(c);

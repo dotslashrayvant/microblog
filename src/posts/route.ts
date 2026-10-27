@@ -2,8 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 
-import { verifySession } from "../middleware/verify-session";
-
+import { verifySession } from "@/middleware/verify-session";
 import {
   CreatePostSchema,
   PostIdParamSchema,
@@ -11,7 +10,6 @@ import {
   ReplyBodySchema,
   UpdatePostSchema,
 } from "./schema";
-
 import {
   createPost,
   deletePost,

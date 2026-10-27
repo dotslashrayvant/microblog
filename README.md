@@ -6,7 +6,7 @@ A microblogging JSON API built on [Bun](https://bun.sh) and [Hono](https://hono.
 
 ## Features
 
-- **Auth** — cookie-based sessions: register, login, logout
+- **Auth** — cookie-based sessions: signup, login, logout
 - **Users** — public profiles (lookup by id or username), own-profile view and editing
 - **Posts** — create, read, edit, delete; threaded replies; likes and reposts
 - **Social graph** — follow/unfollow, follower/following lists, and a home feed
@@ -14,17 +14,31 @@ A microblogging JSON API built on [Bun](https://bun.sh) and [Hono](https://hono.
 
 ## Tech stack
 
-| Layer      | Choice                                              |
-| ---------- | --------------------------------------------------- |
-| Runtime    | Bun                                                 |
-| Framework  | Hono                                                |
-| Database   | Postgres via Drizzle ORM (`drizzle-orm/bun-sql`)    |
-| Sessions   | Redis (`Bun.redis`)                                 |
-| Validation | Zod + `@hono/zod-validator`                         |
+| Layer      | Choice                                           |
+| ---------- | ------------------------------------------------ |
+| Runtime    | Bun                                              |
+| Framework  | Hono                                             |
+| Database   | Postgres via Drizzle ORM (`drizzle-orm/bun-sql`) |
+| Sessions   | Redis (`Bun.redis`)                              |
+| Validation | Zod + `@hono/zod-validator`                      |
 
 ## Getting started
 
-### Prerequisites
+### Quick start (Docker)
+
+The whole stack — API, Postgres, and Redis, runs with one command:
+
+```bash
+docker compose up --build
+```
+
+Migrations are applied automatically, then the API is served on `http://localhost:3000/api/v1`. Try it:
+
+```bash
+./scripts/smoke-test.sh http://localhost:3000/api/v1
+```
+
+### Prerequisites (local dev)
 
 - [Bun](https://bun.sh) v1.x
 - A running Postgres instance
@@ -47,84 +61,86 @@ NODE_ENV=development   # "production" enables secure cookies
 Push the schema to the database, then start the dev server:
 
 ```bash
-bun run push        # drizzle-kit push
+bun run db:push     # drizzle-kit push
 bun run dev         # hot-reloading server (src/index.ts)
 ```
 
 ### Other commands
 
 ```bash
-bun run database   # open Drizzle Studio
-bun test           # run tests
+bun run db:view       # open Drizzle Studio
+bun run db:generate   # generate a migration from schema changes
+bun run db:migrate    # apply pending migrations
+./scripts/smoke-test.sh   # end-to-end smoke test (needs the server running)
 ```
 
 ## API
 
-All request/response bodies are JSON. Validation errors return `400` with `{ "error": [{ "field", "message" }] }`.
+All paths below are relative to the `/api/v1` base path (e.g. `POST /api/v1/auth/signup`). All request/response bodies are JSON. Validation errors return `400` with `{ "error": [{ "field", "message" }] }`.
 
-Routes marked 🔒 require a valid `session` cookie (obtained via register or login) and return `401` otherwise.
+Routes marked 🔒 require a valid `session` cookie (obtained via signup or login) and return `401` otherwise.
 
 ### Auth
 
-| Method | Path             | Description                                        |
-| ------ | ---------------- | -------------------------------------------------- |
-| POST   | `/auth/register` | Create an account + profile, start a session       |
-| POST   | `/auth/login`    | Authenticate, start a session                      |
-| POST   | `/auth/logout`   | Destroy the session and clear the cookie           |
+| Method | Path           | Description                                  |
+| ------ | -------------- | -------------------------------------------- |
+| POST   | `/auth/signup` | Create an account + profile, start a session |
+| POST   | `/auth/login`  | Authenticate, start a session                |
+| POST   | `/auth/logout` | Destroy the session and clear the cookie     |
 
-Register and login are rate-limited per IP (25 requests / 30 min).
+Signup and login are rate-limited per IP (25 requests / 30 min).
 
 ### Users
 
-| Method | Path                                     | Description                                  |
-| ------ | ---------------------------------------- | -------------------------------------------- |
-| GET    | `/users/me`                              | 🔒 Own profile (includes email)              |
-| PATCH  | `/users/me`                              | 🔒 Update own profile                        |
-| GET    | `/users/:id`                             | Public profile by id                         |
-| GET    | `/users/:id/posts`                       | Posts authored by a user, newest first       |
-| GET    | `/users/:id/liked_posts`                 | Posts liked by a user, newest like first     |
-| GET    | `/users/by/username/:username`           | Public profile by username                   |
-| GET    | `/users/by/username/:username/posts`     | Posts authored by a username                 |
-| GET    | `/users/by/username/:username/liked_posts` | Posts liked by a username                  |
-| POST   | `/users/:id/follow`                      | 🔒 Follow a user (idempotent)                |
-| DELETE | `/users/:id/follow`                      | 🔒 Unfollow a user (idempotent)              |
-| GET    | `/users/:id/followers`                   | Users who follow a user, newest follow first |
-| GET    | `/users/:id/following`                   | Users a user follows, newest follow first    |
-| GET    | `/users/by/username/:username/followers` | Followers of a username                      |
-| GET    | `/users/by/username/:username/following` | Users a username follows                     |
+| Method | Path                                       | Description                                  |
+| ------ | ------------------------------------------ | -------------------------------------------- |
+| GET    | `/users/me`                                | 🔒 Own profile (includes email)              |
+| PATCH  | `/users/me`                                | 🔒 Update own profile                        |
+| GET    | `/users/:id`                               | Public profile by id                         |
+| GET    | `/users/:id/posts`                         | Posts authored by a user, newest first       |
+| GET    | `/users/:id/liked_posts`                   | Posts liked by a user, newest like first     |
+| GET    | `/users/by/username/:username`             | Public profile by username                   |
+| GET    | `/users/by/username/:username/posts`       | Posts authored by a username                 |
+| GET    | `/users/by/username/:username/liked_posts` | Posts liked by a username                    |
+| POST   | `/users/:id/follow`                        | 🔒 Follow a user (idempotent)                |
+| DELETE | `/users/:id/follow`                        | 🔒 Unfollow a user (idempotent)              |
+| GET    | `/users/:id/followers`                     | Users who follow a user, newest follow first |
+| GET    | `/users/:id/following`                     | Users a user follows, newest follow first    |
+| GET    | `/users/by/username/:username/followers`   | Followers of a username                      |
+| GET    | `/users/by/username/:username/following`   | Users a username follows                     |
 
 Profile responses include `followersCount` and `followingCount`. Following yourself returns `400`.
 
 ### Posts
 
-| Method | Path                      | Description                                        |
-| ------ | ------------------------- | -------------------------------------------------- |
-| POST   | `/posts`                  | 🔒 Create a post (set `parentId` to make a reply)  |
-| GET    | `/posts/:id`              | Get a post                                         |
-| PATCH  | `/posts/:id`              | 🔒 Edit own post (content only)                    |
-| DELETE | `/posts/:id`              | 🔒 Delete own post (removes its reply subtree)     |
-| POST   | `/posts/:id/reply`        | 🔒 Reply to a post                                 |
-| POST   | `/posts/:id/like`         | 🔒 Like a post (idempotent)                        |
-| DELETE | `/posts/:id/like`         | 🔒 Remove a like (idempotent)                      |
-| POST   | `/posts/:id/repost`       | 🔒 Repost a post (idempotent)                      |
-| DELETE | `/posts/:id/repost`       | 🔒 Remove a repost (idempotent)                    |
-| GET    | `/posts/:id/liking_users` | Users who liked a post, newest like first          |
+| Method | Path                      | Description                                       |
+| ------ | ------------------------- | ------------------------------------------------- |
+| POST   | `/posts`                  | 🔒 Create a post (set `parentId` to make a reply) |
+| GET    | `/posts/:id`              | Get a post                                        |
+| PATCH  | `/posts/:id`              | 🔒 Edit own post (content only)                   |
+| DELETE | `/posts/:id`              | 🔒 Delete own post (removes its reply subtree)    |
+| POST   | `/posts/:id/reply`        | 🔒 Reply to a post                                |
+| POST   | `/posts/:id/like`         | 🔒 Like a post (idempotent)                       |
+| DELETE | `/posts/:id/like`         | 🔒 Remove a like (idempotent)                     |
+| POST   | `/posts/:id/repost`       | 🔒 Repost a post (idempotent)                     |
+| DELETE | `/posts/:id/repost`       | 🔒 Remove a repost (idempotent)                   |
+| GET    | `/posts/:id/liking_users` | Users who liked a post, newest like first         |
 
 Post content is 1–280 characters. List endpoints accept `?limit` (1–100, default 20) and `?offset` (default 0) query params.
 
 ### Feed
 
-| Method | Path    | Description                                                        |
-| ------ | ------- | ------------------------------------------------------------------ |
+| Method | Path    | Description                                                             |
+| ------ | ------- | ----------------------------------------------------------------------- |
 | GET    | `/feed` | 🔒 Home timeline: posts from followed users plus your own, newest first |
 
 Takes the same `?limit` / `?offset` params as the other list endpoints.
 
 ### Misc
 
-| Method | Path      | Description  |
-| ------ | --------- | ------------ |
-| GET    | `/health` | Health check |
+| Method | Path      | Description                                                  |
+| ------ | --------- | ------------------------------------------------------------ |
+| GET    | `/health` | Postgres + Redis status and latency; `503` if either is down |
 
 ## Architecture
 
@@ -138,13 +154,15 @@ Each feature lives in its own directory under `src/` and splits three ways:
 
 ```
 src/
-├── index.ts          # app wiring; Bun serves the default export
-├── config.ts         # shared constants (TTLs, cookie options)
-├── auth/             # register, login, logout, sessions
+├── index.ts          # app wiring (/api/v1 base path); Bun serves the default export
+├── config.ts         # shared constants (TTLs, cookie options, probe timeout)
+├── health.ts         # /health handler: Postgres + Redis probes
+├── auth/             # signup, login, logout, sessions
 ├── users/            # profiles, follows
 ├── posts/            # posts, replies, likes, reposts
 ├── feed/             # home timeline
-├── db/               # Drizzle connection + table definitions
+├── database/         # Drizzle connection + table definitions
+├── redis/            # Redis status probe
 └── middleware/       # rateLimit, verifySession
 ```
 

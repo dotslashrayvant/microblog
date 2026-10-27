@@ -1,8 +1,8 @@
 import { getCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 
-import { COOKIE_NAME } from "../config";
-import { getSession } from "../auth/service";
+import { COOKIE_NAME } from "@/config";
+import { getSession } from "@/auth/session";
 
 export const verifySession = createMiddleware<{
   Variables: { userId: string };

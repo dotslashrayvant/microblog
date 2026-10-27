@@ -1,6 +1,6 @@
 import z from "zod";
 
-// Microblog posts are short-form.
+// microblog posts are short-form.
 const content = z.string().min(1).max(280);
 
 export const CreatePostSchema = z.object({

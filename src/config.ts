@@ -6,6 +6,8 @@ export const SESSION_TTL_SECONDS = 60 * 60; // 1 hour
 export const AUTH_OPS_LIMIT = 25; // 5 accounts per
 export const AUTH_RATE_LIMIT_SECONDS = 60 * 30; // 30 minutes
 
+export const PROBE_TIMEOUT_MS = 2000;
+
 // Cookie Settings
 export const cookieOptions = {
   httpOnly: true,

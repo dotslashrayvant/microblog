@@ -9,6 +9,11 @@
     "allowJs": true,
     "types": ["bun"],
 
+    /* Import alias */
+    "paths": {
+      "@/*": ["./src/*"],
+    },
+
     // Bundler mode
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -25,6 +30,6 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
-  }
+    "noPropertyAccessFromIndexSignature": false,
+  },
 }

@@ -15,7 +15,6 @@ import {
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
 
-  // email must be unique
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
 
@@ -50,14 +49,10 @@ export const profiles = pgTable("profiles", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
 
-  // aka handle, prepend @ in frontend
-  // must be unique
   username: varchar("username", { length: 32 }).notNull().unique(),
 
-  // the name that will be displayed on profile ui
   displayName: varchar("display_name", { length: 64 }).notNull(),
 
-  // optional
   bio: text("bio"),
   birthDate: date(),
 

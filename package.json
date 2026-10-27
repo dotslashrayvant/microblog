@@ -4,24 +4,24 @@
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@types/bun": "latest",
-    "drizzle-kit": "^0.31.10",
+    "@types/bun": "^1.4.4",
+    "drizzle-kit": "^0.31.11",
     "postgres": "^3.4.9"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@hono/zod-validator": "^0.8.0",
-    "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.27",
-    "zod": "^4.4.3"
+    "@hono/zod-validator": "^0.9.1",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.14",
+    "zod": "^4.6.7"
   },
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "push": "bunx drizzle-kit push",
-    "database": "bunx drizzle-kit studio",
-    "generate": "bunx drizzle-kit generate",
-    "migrate": "bunx drizzle-kit migrate"
+    "db:push": "bunx drizzle-kit push",
+    "db:view": "bunx drizzle-kit studio",
+    "db:generate": "bunx drizzle-kit generate",
+    "db:migrate": "bunx drizzle-kit migrate"
   }
 }

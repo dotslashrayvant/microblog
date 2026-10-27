@@ -2,10 +2,10 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 
-import { verifySession } from "../middleware/verify-session";
+import { verifySession } from "@/middleware/verify-session";
 
-import { PostListQuerySchema } from "../posts/schema";
-import { getHomeFeed } from "../posts/service";
+import { PostListQuerySchema } from "@/posts/schema";
+import { getHomeFeed } from "@/posts/service";
 
 export const feed = new Hono();
 

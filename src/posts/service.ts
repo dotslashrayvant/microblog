@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 
-import { db } from "../db";
-import { follows, likes, posts, profiles, reposts } from "../db/schema";
+import { dbClient } from "@/database/client";
+import { follows, likes, posts, profiles, reposts } from "@/database/schema";
 import type { CreatePostData, PostListQuery, UpdatePostData } from "./schema";
 
 // Public post shape, embeds the author's handle + display name.
@@ -20,7 +20,7 @@ const postColumns = {
 };
 
 async function fetchPostById(id: string) {
-  const [row] = await db
+  const [row] = await dbClient
     .select(postColumns)
     .from(posts)
     .innerJoin(profiles, eq(profiles.userId, posts.authorId))
@@ -32,7 +32,7 @@ async function fetchPostById(id: string) {
 export async function createPost(authorId: string, input: CreatePostData) {
   // A reply must point at an existing parent.
   if (input.parentId) {
-    const [parent] = await db
+    const [parent] = await dbClient
       .select({ id: posts.id })
       .from(posts)
       .where(eq(posts.id, input.parentId));
@@ -40,7 +40,7 @@ export async function createPost(authorId: string, input: CreatePostData) {
     if (!parent) return { ok: false as const, code: 404 as const };
   }
 
-  const [created] = await db
+  const [created] = await dbClient
     .insert(posts)
     .values({
       authorId,
@@ -70,7 +70,7 @@ export async function updatePost(
   authorId: string,
   input: UpdatePostData,
 ) {
-  const [existing] = await db
+  const [existing] = await dbClient
     .select({ authorId: posts.authorId })
     .from(posts)
     .where(eq(posts.id, id));
@@ -80,7 +80,7 @@ export async function updatePost(
     return { ok: false as const, code: 403 as const };
 
   // updatedAt has no $onUpdate, so set it here (matches the profiles service).
-  await db
+  await dbClient
     .update(posts)
     .set({ content: input.content, updatedAt: new Date() })
     .where(eq(posts.id, id));
@@ -92,7 +92,7 @@ export async function updatePost(
 }
 
 export async function deletePost(id: string, authorId: string) {
-  const [existing] = await db
+  const [existing] = await dbClient
     .select({ authorId: posts.authorId })
     .from(posts)
     .where(eq(posts.id, id));
@@ -103,7 +103,7 @@ export async function deletePost(id: string, authorId: string) {
     return { ok: false as const, code: 403 as const };
 
   // parent_id cascades, so replies to this post are removed too.
-  await db.delete(posts).where(eq(posts.id, id));
+  await dbClient.delete(posts).where(eq(posts.id, id));
 
   return { ok: true as const };
 }
@@ -112,7 +112,7 @@ export async function getPostsByAuthorId(
   authorId: string,
   { limit, offset }: PostListQuery,
 ) {
-  const rows = await db
+  const rows = await dbClient
     .select(postColumns)
     .from(posts)
     .innerJoin(profiles, eq(profiles.userId, posts.authorId))
@@ -125,7 +125,7 @@ export async function getPostsByAuthorId(
 }
 
 async function postExists(id: string) {
-  const [row] = await db
+  const [row] = await dbClient
     .select({ id: posts.id })
     .from(posts)
     .where(eq(posts.id, id));
@@ -138,7 +138,7 @@ export async function likePost(userId: string, postId: string) {
   if (!(await postExists(postId)))
     return { ok: false as const, code: 404 as const };
 
-  await db.insert(likes).values({ userId, postId }).onConflictDoNothing();
+  await dbClient.insert(likes).values({ userId, postId }).onConflictDoNothing();
   return { ok: true as const };
 }
 
@@ -146,7 +146,7 @@ export async function unlikePost(userId: string, postId: string) {
   if (!(await postExists(postId)))
     return { ok: false as const, code: 404 as const };
 
-  await db
+  await dbClient
     .delete(likes)
     .where(and(eq(likes.userId, userId), eq(likes.postId, postId)));
   return { ok: true as const };
@@ -156,7 +156,10 @@ export async function repostPost(userId: string, postId: string) {
   if (!(await postExists(postId)))
     return { ok: false as const, code: 404 as const };
 
-  await db.insert(reposts).values({ userId, postId }).onConflictDoNothing();
+  await dbClient
+    .insert(reposts)
+    .values({ userId, postId })
+    .onConflictDoNothing();
   return { ok: true as const };
 }
 
@@ -164,7 +167,7 @@ export async function unrepostPost(userId: string, postId: string) {
   if (!(await postExists(postId)))
     return { ok: false as const, code: 404 as const };
 
-  await db
+  await dbClient
     .delete(reposts)
     .where(and(eq(reposts.userId, userId), eq(reposts.postId, postId)));
   return { ok: true as const };
@@ -177,7 +180,7 @@ export async function getLikingUsers(
   if (!(await postExists(postId)))
     return { ok: false as const, code: 404 as const };
 
-  const users = await db
+  const users = await dbClient
     .select({
       id: profiles.userId,
       username: profiles.username,
@@ -198,12 +201,12 @@ export async function getHomeFeed(
   userId: string,
   { limit, offset }: PostListQuery,
 ) {
-  const followees = db
+  const followees = dbClient
     .select({ id: follows.followeeId })
     .from(follows)
     .where(eq(follows.followerId, userId));
 
-  const rows = await db
+  const rows = await dbClient
     .select(postColumns)
     .from(posts)
     .innerJoin(profiles, eq(profiles.userId, posts.authorId))
@@ -219,7 +222,7 @@ export async function getLikedPostsByUserId(
   userId: string,
   { limit, offset }: PostListQuery,
 ) {
-  const rows = await db
+  const rows = await dbClient
     .select(postColumns)
     .from(likes)
     .innerJoin(posts, eq(posts.id, likes.postId))

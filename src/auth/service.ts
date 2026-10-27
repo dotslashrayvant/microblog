@@ -1,44 +1,12 @@
-import { redis } from "bun";
 import { eq } from "drizzle-orm";
 
-import { db } from "../db";
-import { profiles, users } from "../db/schema";
-import { SESSION_TTL_SECONDS } from "../config";
+import { dbClient } from "@/database/client";
+import { profiles, users } from "@/database/schema";
 import type { UserLoginData, UserRegisterData } from "./schema";
-
-export async function createSession(userId: string) {
-  const sessionId = crypto.randomUUID();
-  const key = `session:${sessionId}`;
-
-  await redis.set(key, userId);
-  await redis.expire(key, SESSION_TTL_SECONDS);
-
-  return sessionId;
-}
-
-export async function getSession(sessionId: string) {
-  const key = `session:${sessionId}`;
-
-  const exists = await redis.exists(key);
-  if (!exists) return null;
-
-  const userId = await redis.get(key);
-
-  return userId;
-}
-
-export async function destroySession(sessionId: string) {
-  await redis.del(`session:${sessionId}`);
-}
-
-// TODO: wire up kafka for email sending service
-async function sendVerificationEmail(email: string) {
-  console.log(`email verification event: ${email}`);
-}
 
 export async function registerUser(input: UserRegisterData) {
   // check if user exists
-  const [existing] = await db
+  const [existing] = await dbClient
     .select({ id: users.id })
     .from(users)
     .where(eq(users.email, input.email));
@@ -47,7 +15,7 @@ export async function registerUser(input: UserRegisterData) {
   if (existing) return { ok: false, code: 409 as const };
 
   // username already taken
-  const [taken] = await db
+  const [taken] = await dbClient
     .select({ userId: profiles.userId })
     .from(profiles)
     .where(eq(profiles.username, input.username));
@@ -59,7 +27,7 @@ export async function registerUser(input: UserRegisterData) {
   const passwordHash = await Bun.password.hash(input.password);
 
   try {
-    user = await db.transaction(async (tx) => {
+    user = await dbClient.transaction(async (tx) => {
       // create a user on db
       const [created] = await tx
         .insert(users)
@@ -88,7 +56,7 @@ export async function registerUser(input: UserRegisterData) {
 }
 
 export async function loginUser(input: UserLoginData) {
-  const [user] = await db
+  const [user] = await dbClient
     .select()
     .from(users)
     .where(eq(users.email, input.email));
@@ -99,4 +67,9 @@ export async function loginUser(input: UserLoginData) {
 
   if (!user || !valid) return { ok: false, error: "Invalid credentials" };
   return { ok: true, userId: user.id, email: user.email };
+}
+
+// TODO: wire up kafka for email sending service
+async function sendVerificationEmail(email: string) {
+  console.log(`email verification event: ${email}`);
 }

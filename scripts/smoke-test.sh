@@ -19,7 +19,7 @@
 
 set -uo pipefail
 
-BASE="${1:-${BASE_URL:-http://localhost:3000}}"
+BASE="${1:-${BASE_URL:-http://localhost:3000/api/v1}}"
 
 # --- deps ---
 MISSING=0
@@ -102,7 +102,7 @@ fi
 LONG="$(printf 'x%.0s' {1..281})"
 
 echo; echo "# auth / users/me"
-http POST /auth/register "$JAR_A" "{\"email\":\"$EMAIL_A\",\"password\":\"password123\",\"username\":\"$USER_A\",\"displayName\":\"Alice\"}"
+http POST /auth/signup "$JAR_A" "{\"email\":\"$EMAIL_A\",\"password\":\"password123\",\"username\":\"$USER_A\",\"displayName\":\"Alice\"}"
 expect_code "register A -> 201" 201
 http GET /users/me "$JAR_A"
 expect_code "GET /users/me -> 200" 200
@@ -114,16 +114,16 @@ http GET /auth/me "$JAR_A"
 expect_code "GET /auth/me removed -> 404" 404
 
 echo; echo "# register validation / duplicates"
-http POST /auth/register none '{"email":"not-an-email","password":"password123","username":"vuser","displayName":"V"}'
+http POST /auth/signup none '{"email":"not-an-email","password":"password123","username":"vuser","displayName":"V"}'
 expect_code "register bad email -> 400" 400
-http POST /auth/register none "{\"email\":\"v_${TS}@example.com\",\"password\":\"short\",\"username\":\"vuser_${TS}\",\"displayName\":\"V\"}"
+http POST /auth/signup none "{\"email\":\"v_${TS}@example.com\",\"password\":\"short\",\"username\":\"vuser_${TS}\",\"displayName\":\"V\"}"
 expect_code "register short password -> 400" 400
-http POST /auth/register none "{\"email\":\"v_${TS}@example.com\",\"password\":\"password123\",\"username\":\"bad handle!\",\"displayName\":\"V\"}"
+http POST /auth/signup none "{\"email\":\"v_${TS}@example.com\",\"password\":\"password123\",\"username\":\"bad handle!\",\"displayName\":\"V\"}"
 expect_code "register bad username chars -> 400" 400
-http POST /auth/register none "{\"email\":\"$EMAIL_A\",\"password\":\"password123\",\"username\":\"other_${TS}\",\"displayName\":\"Dup\"}"
+http POST /auth/signup none "{\"email\":\"$EMAIL_A\",\"password\":\"password123\",\"username\":\"other_${TS}\",\"displayName\":\"Dup\"}"
 expect_code "register duplicate email -> 409" 409
 expect_json "  generic failure message" '.error' 'Registration failed'
-http POST /auth/register none "{\"email\":\"dupu_${TS}@example.com\",\"password\":\"password123\",\"username\":\"$USER_A\",\"displayName\":\"Dup\"}"
+http POST /auth/signup none "{\"email\":\"dupu_${TS}@example.com\",\"password\":\"password123\",\"username\":\"$USER_A\",\"displayName\":\"Dup\"}"
 expect_code "register duplicate username -> 409" 409
 expect_json "  generic failure message" '.error' 'Registration failed'
 
@@ -179,7 +179,7 @@ echo; echo "# replies"
 http POST "/posts/$P1/reply" "$JAR_A" '{"content":"a reply"}'
 expect_code "POST /posts/:id/reply -> 201" 201
 expect_json "  reply parentId = P1" '.post.parentId' "$P1"
-R="$(json '.post.id')"
+RP="$(json '.post.id')"
 http POST /posts "$JAR_A" "{\"content\":\"child via parentId\",\"parentId\":\"$P1\"}"
 expect_code "POST /posts with parentId -> 201" 201
 C="$(json '.post.id')"
@@ -208,7 +208,7 @@ echo; echo "# edit / ownership"
 http PATCH "/posts/$P1" "$JAR_A" '{"content":"edited first"}'
 expect_code "PATCH own post -> 200" 200
 expect_json "  content updated" '.post.content' 'edited first'
-http POST /auth/register "$JAR_B" "{\"email\":\"$EMAIL_B\",\"password\":\"password123\",\"username\":\"$USER_B\",\"displayName\":\"Bob\"}"
+http POST /auth/signup "$JAR_B" "{\"email\":\"$EMAIL_B\",\"password\":\"password123\",\"username\":\"$USER_B\",\"displayName\":\"Bob\"}"
 expect_code "register B -> 201" 201
 http GET /users/me "$JAR_B"
 BID="$(json '.user.id')"
@@ -338,7 +338,7 @@ expect_json "  newest is B's own post" '.posts[0].username' "$USER_B"
 http GET "/feed?limit=2" "$JAR_B"
 expect_json "  ?limit=2 returns 2" '.posts | length' '2'
 # C is followed by nobody - her posts must stay out of B's feed.
-http POST /auth/register "$JAR_C" "{\"email\":\"$EMAIL_C\",\"password\":\"password123\",\"username\":\"$USER_C\",\"displayName\":\"Carol\"}"
+http POST /auth/signup "$JAR_C" "{\"email\":\"$EMAIL_C\",\"password\":\"password123\",\"username\":\"$USER_C\",\"displayName\":\"Carol\"}"
 expect_code "register C -> 201" 201
 http POST /posts "$JAR_C" '{"content":"carol post"}'
 expect_code "C posts -> 201" 201
@@ -365,7 +365,7 @@ http DELETE "/posts/$P1" "$JAR_A"
 expect_code "DELETE own post -> 200" 200
 http GET "/posts/$P1" none
 expect_code "GET deleted post -> 404" 404
-http GET "/posts/$R" none
+http GET "/posts/$RP" none
 expect_code "reply cascade-deleted -> 404" 404
 http GET "/posts/$C" none
 expect_code "child cascade-deleted -> 404" 404
