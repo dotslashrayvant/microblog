@@ -1,5 +1,15 @@
 # microblog
 
+[![License: MIT](https://img.shields.io/github/license/dotslashrayvant/microblog?style=flat-square)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/dotslashrayvant/microblog?style=flat-square)](https://github.com/dotslashrayvant/microblog/commits/main)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white&style=flat-square)
+![Bun](https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white&style=flat-square)
+![Hono](https://img.shields.io/badge/Hono-E36002?logo=hono&logoColor=white&style=flat-square)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white&style=flat-square)
+![Drizzle](https://img.shields.io/badge/Drizzle-C5F74F?logo=drizzle&logoColor=black&style=flat-square)
+![Redis](https://img.shields.io/badge/Redis-FF4438?logo=redis&logoColor=white&style=flat-square)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white&style=flat-square)
+
 A microblogging JSON API built on [Bun](https://bun.sh) and [Hono](https://hono.dev), with Postgres (via [Drizzle ORM](https://orm.drizzle.team)) for storage and Redis for sessions and rate limiting. No frontend — just the API.
 
 ![End-to-end smoke test: 135 checks passing](assets/smoke-test.gif)
@@ -143,8 +153,6 @@ Takes the same `?limit` / `?offset` params as the other list endpoints.
 | GET    | `/health` | Postgres + Redis status and latency; `503` if either is down |
 
 ## Architecture
-
-![Architecture diagram](assets/architecture.png)
 
 Each feature lives in its own directory under `src/` and splits three ways:
 
