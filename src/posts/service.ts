@@ -76,6 +76,7 @@ export async function updatePost(
     .where(eq(posts.id, id));
 
   if (!existing) return { ok: false as const, code: 404 as const };
+
   if (existing.authorId !== authorId)
     return { ok: false as const, code: 403 as const };
 

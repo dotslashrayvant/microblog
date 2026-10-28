@@ -5,7 +5,6 @@ const content = z.string().min(1).max(280);
 
 export const CreatePostSchema = z.object({
   content,
-  // optional, set to make this post a reply
   parentId: z.uuid().optional(),
 });
 

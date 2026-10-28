@@ -1,6 +1,6 @@
 import z from "zod";
 
-// Handle rules, kept in sync with UserRegisterSchema.username in ../auth/schema.
+// Handle rules, kept in sync with RegisterSchema.username in ../auth/schema.
 const handle = z
   .string()
   .min(3)

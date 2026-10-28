@@ -102,7 +102,7 @@ export const follows = pgTable(
   ],
 );
 
-// one repost per (user, post).
+// One repost per (user, post).
 export const reposts = pgTable(
   "reposts",
   {

@@ -1,78 +1,45 @@
 import { Hono } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
-import { zValidator } from "@hono/zod-validator";
 
 import { COOKIE_NAME, cookieOptions } from "@/config";
 import { rateLimit } from "@/middleware/rate-limit";
+import { validate } from "@/middleware/validate";
 import { LoginSchema, RegisterSchema } from "./schema";
 import { loginUser, registerUser } from "./service";
 import { createSession, destroySession } from "./session";
 
 export const auth = new Hono();
 
-auth.post(
-  "/signup",
+const validateSignup = validate("json", RegisterSchema);
+const validateLogin = validate("json", LoginSchema);
 
-  rateLimit,
+auth.post("/signup", rateLimit, validateSignup, async (c) => {
+  const result = await registerUser(c.req.valid("json"));
 
-  zValidator("json", RegisterSchema, (res, c) => {
-    if (!res.success)
-      return c.json(
-        {
-          error: res.error.issues.map((i) => ({
-            field: i.path.join("."),
-            message: i.message,
-          })),
-        },
-        400,
-      );
-  }),
+  if (!result.ok || !result.user) {
+    return c.json({ error: "Registration failed" }, result.code);
+  }
 
-  async (c) => {
-    const result = await registerUser(c.req.valid("json"));
+  const token = await createSession(result.user.id);
+  setCookie(c, COOKIE_NAME, token, cookieOptions);
+  c.header("Cache-Control", "no-store");
 
-    if (!result.ok || !result.user) {
-      return c.json({ error: "Registration failed" }, result.code);
-    }
+  return c.json({ success: true }, 201);
+});
 
-    const token = await createSession(result.user.id);
-    setCookie(c, COOKIE_NAME, token, cookieOptions);
+auth.post("/login", rateLimit, validateLogin, async (c) => {
+  const result = await loginUser(c.req.valid("json"));
 
-    return c.json({ success: true }, 201);
-  },
-);
+  if (!result.ok || !result.userId) {
+    return c.json({ error: "Incorrect email or password" }, 401);
+  }
 
-auth.post(
-  "/login",
+  const token = await createSession(result.userId);
+  setCookie(c, COOKIE_NAME, token, cookieOptions);
+  c.header("Cache-Control", "no-store");
 
-  rateLimit,
-
-  zValidator("json", LoginSchema, (res, c) => {
-    if (!res.success)
-      return c.json(
-        {
-          error: res.error.issues.map((i) => ({
-            field: i.path.join("."),
-            message: i.message,
-          })),
-        },
-        400,
-      );
-  }),
-
-  async (c) => {
-    const result = await loginUser(c.req.valid("json"));
-
-    if (!result.ok || !result.userId) {
-      return c.json({ error: "Incorrect email or password" }, 401);
-    }
-
-    const token = await createSession(result.userId);
-    setCookie(c, COOKIE_NAME, token, cookieOptions);
-
-    return c.json({ success: true });
-  },
-);
+  return c.json({ success: true });
+});
 
 auth.post("/logout", async (c) => {
   const sessionId = getCookie(c, COOKIE_NAME);

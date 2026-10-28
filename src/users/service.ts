@@ -69,8 +69,7 @@ export async function updateProfile(userId: string, input: UpdateProfileData) {
   return { ok: true as const, user: updated };
 }
 
-// Authenticated self-view — includes email / emailVerified, unlike the
-// public shape above.
+// Authenticated self-view - includes email / emailVerified
 export async function getOwnProfile(userId: string) {
   const [row] = await dbClient
     .select({
@@ -91,15 +90,6 @@ export async function getOwnProfile(userId: string) {
   if (!row) return { ok: false as const, code: 404 as const };
 
   return { ok: true as const, user: row };
-}
-
-async function userExists(id: string) {
-  const [row] = await dbClient
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.id, id));
-
-  return Boolean(row);
 }
 
 // Follow / unfollow are idempotent: onConflictDoNothing means a repeat is a no-op.
@@ -177,4 +167,13 @@ export async function getFollowing(
     .offset(offset);
 
   return { ok: true as const, users: rows };
+}
+
+async function userExists(id: string) {
+  const [row] = await dbClient
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, id));
+
+  return Boolean(row);
 }

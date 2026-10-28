@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { dbClient } from "@/database/client";
+import { isUniqueViolation } from "@/database/errors";
 import { profiles, users } from "@/database/schema";
 import type { UserLoginData, UserRegisterData } from "./schema";
 
@@ -45,7 +46,11 @@ export async function registerUser(input: UserRegisterData) {
 
       return created;
     });
-  } catch {
+  } catch (error) {
+    // Lost a race with a concurrent signup: both passed the checks above,
+    // and the unique constraint caught this one.
+    if (isUniqueViolation(error)) return { ok: false, code: 409 as const };
+
     // DB error
     return { ok: false, code: 500 as const };
   }

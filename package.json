@@ -12,6 +12,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@hono/bun": "^1.0.1",
     "@hono/zod-validator": "^0.9.1",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.14",
@@ -19,6 +20,9 @@
   },
   "scripts": {
     "dev": "bun run --hot src/index.ts",
+    "test": "bun test",
+    "test:smoke": "./scripts/smoke-test.sh",
+    "typecheck": "tsc --noEmit",
     "db:push": "bunx drizzle-kit push",
     "db:view": "bunx drizzle-kit studio",
     "db:generate": "bunx drizzle-kit generate",
