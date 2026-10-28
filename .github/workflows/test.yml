@@ -1,0 +1,45 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Same images as compose.yaml.
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: microblog
+          POSTGRES_PASSWORD: microblog
+          POSTGRES_DB: microblog
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U microblog"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+      redis:
+        image: redis:8.8.1-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://microblog:microblog@localhost:5432/microblog
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4 # matches the Dockerfile
+
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test

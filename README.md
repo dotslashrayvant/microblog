@@ -1,5 +1,6 @@
 # microblog
 
+[![Tests](https://img.shields.io/github/actions/workflow/status/dotslashrayvant/microblog/test.yml?branch=main&label=tests&style=flat-square)](https://github.com/dotslashrayvant/microblog/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/github/license/dotslashrayvant/microblog?style=flat-square)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/dotslashrayvant/microblog?style=flat-square)](https://github.com/dotslashrayvant/microblog/commits/main)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white&style=flat-square)
@@ -66,6 +67,7 @@ Create a `.env` file in the project root (Bun loads it automatically — no `dot
 DATABASE_URL=postgres://user:password@localhost:5432/microblog
 REDIS_URL=redis://localhost:6379
 NODE_ENV=development   # "production" enables secure cookies
+TRUST_PROXY=false      # "true" only behind a reverse proxy; rate limits by X-Forwarded-For
 ```
 
 Push the schema to the database, then start the dev server:
@@ -81,8 +83,23 @@ bun run dev         # hot-reloading server (src/index.ts)
 bun run db:view       # open Drizzle Studio
 bun run db:generate   # generate a migration from schema changes
 bun run db:migrate    # apply pending migrations
-./scripts/smoke-test.sh   # end-to-end smoke test (needs the server running)
+bun run typecheck     # tsc --noEmit
 ```
+
+## Testing
+
+```bash
+bun test              # integration suite (needs Postgres + Redis, e.g. docker compose up -d)
+bun run test:smoke    # black-box smoke test against a running server
+```
+
+The `bun test` suite drives the real app in-process with `app.request()`, so it needs no running server, but it does use real Postgres and Redis rather than mocks:
+
+- **Isolated database.** `tests/setup.ts` creates `<db>_test` next to your `DATABASE_URL` database on the first run, applies the Drizzle migrations, and truncates every table before each test. Dev data is never touched.
+- **No Redis flushing.** Each request gets a unique fake client IP, so rate-limit buckets never collide between tests. The suite deletes only the session and rate-limit keys it created.
+- **Quiet output.** App and request logs are muted; run with `TEST_LOGS=1` to see them.
+
+CI runs the typecheck and the suite against Postgres and Redis service containers on every push and pull request (`.github/workflows/test.yml`).
 
 ## API
 
